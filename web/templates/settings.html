@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}Settings{% endblock %}
+
+{% block content %}
+<div class="page-header mb-6 flex justify-between items-center">
+    <h1 class="page-title">Settings & Environments</h1>
+    <button onclick="showAddEnvModal()" class="btn btn-primary flex items-center gap-2">
+        <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+        Add Environment
+    </button>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 1.5rem;">
+    <div style="flex: 2; min-width: 300px;" class="space-y-6">
+        <div class="card">
+            <div class="p-4 sm:p-6 border-b border-strong">
+                <h2 class="section-title m-0">Environments</h2>
+                <p class="text-sm text-secondary mt-1">Manage Oracle Fusion instances for testing.</p>
+            </div>
+            {% if environments %}
+            <div class="overflow-x-auto">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>URL</th>
+                            <th>Username</th>
+                            <th>Password Env Var</th>
+                            <th class="w-16"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-strong">
+                        {% for env in environments %}
+                        <tr class="hover-row">
+                            <td class="font-medium text-primary">{{ env.name }}</td>
+                            <td class="text-sm font-mono text-secondary">{{ env.url }}</td>
+                            <td class="text-sm">{{ env.username }}</td>
+                            <td class="text-sm font-mono">
+                                <span class="bg-surface px-1.5 py-0.5 rounded border border-strong text-xs">{{ env.password_env_var }}</span>
+                            </td>
+                            <td class="text-right">
+                                <button onclick="deleteEnv('{{ env.id }}')" class="btn-icon text-red-500 hover:bg-red-500/10" title="Delete Environment">
+                                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="p-8 text-center text-secondary">
+                <p>No environments configured yet.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div style="flex: 1; min-width: 300px;" class="space-y-6">
+        <div class="card p-6">
+            <h2 class="section-title mb-6">Default Configuration</h2>
+            
+            <div class="space-y-4">
+                <div style="display: flex; flex-wrap: wrap; gap: 0.25rem; border-bottom: 1px solid var(--border-strong); padding-bottom: 0.75rem;">
+                    <div class="text-secondary text-xs uppercase tracking-wider flex items-center" style="width: 100%;">Fusion URL</div>
+                    <div class="font-mono text-sm text-primary break-all">{{ config.fusion_url }}</div>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.25rem; border-bottom: 1px solid var(--border-strong); padding-bottom: 0.75rem;">
+                    <div class="text-secondary text-xs uppercase tracking-wider flex items-center" style="width: 100%;">Fusion User</div>
+                    <div class="font-mono text-sm text-primary">{{ config.fusion_user }}</div>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.25rem; border-bottom: 1px solid var(--border-strong); padding-bottom: 0.75rem;">
+                    <div class="text-secondary text-xs uppercase tracking-wider flex items-center" style="width: 100%;">Fusion Pod</div>
+                    <div class="font-mono text-sm text-primary">{{ config.fusion_pod }}</div>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.25rem; padding-bottom: 0.5rem;">
+                    <div class="text-secondary text-xs uppercase tracking-wider flex items-center" style="width: 100%;">Consultant</div>
+                    <div class="font-mono text-sm text-primary">{{ config.consultant }}</div>
+                </div>
+            </div>
+            
+            <div class="mt-6 p-4 bg-elevated rounded border border-strong flex gap-3">
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="text-accent flex-shrink-0 mt-0.5"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <p class="text-xs text-secondary leading-relaxed">
+                    Defaults are loaded from <code class="bg-surface px-1 py-0.5 rounded text-primary">.env</code>.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Environment Modal -->
+<div id="addEnvModal" class="modal-backdrop hidden">
+    <div class="modal-container w-full" style="max-width: 28rem;">
+        <div class="modal-header">
+            <h3 class="modal-title">Add Environment</h3>
+            <button type="button" onclick="hideAddEnvModal()" class="text-secondary hover:text-primary transition-colors">
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+        <form id="addEnvForm" onsubmit="submitEnv(event)">
+            <div class="modal-body space-y-4">
+                <div>
+                    <label class="form-label" for="envName">Environment Name</label>
+                    <input type="text" id="envName" name="name" class="form-input" placeholder="e.g. PROD, UAT-US" required>
+                </div>
+                <div>
+                    <label class="form-label" for="envUrl">Fusion URL</label>
+                    <input type="url" id="envUrl" name="url" class="form-input" placeholder="https://..." required>
+                </div>
+                <div>
+                    <label class="form-label" for="envUsername">Username</label>
+                    <input type="text" id="envUsername" name="username" class="form-input" placeholder="e.g. FUSION_ADMIN" required>
+                </div>
+                <div>
+                    <label class="form-label" for="envPasswordVar">Password Env Var</label>
+                    <input type="text" id="envPasswordVar" name="password_env_var" class="form-input font-mono" placeholder="e.g. UAT_PASSWORD" required>
+                    <p class="text-xs text-secondary mt-1">Name of the variable in your .env file containing the password.</p>
+                </div>
+                <div id="envError" class="hidden text-red-500 text-sm mt-2"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" onclick="hideAddEnvModal()" class="btn btn-secondary">Cancel</button>
+                <button type="submit" id="submitEnvBtn" class="btn btn-primary">Save Environment</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function showAddEnvModal() {
+    document.getElementById('addEnvModal').classList.remove('hidden');
+    document.getElementById('envName').focus();
+}
+
+function hideAddEnvModal() {
+    document.getElementById('addEnvModal').classList.add('hidden');
+    document.getElementById('addEnvForm').reset();
+    document.getElementById('envError').classList.add('hidden');
+}
+
+async function submitEnv(e) {
+    e.preventDefault();
+    
+    const btn = document.getElementById('submitEnvBtn');
+    const err = document.getElementById('envError');
+    const formData = new FormData(e.target);
+    
+    const data = {
+        name: formData.get('name'),
+        url: formData.get('url'),
+        username: formData.get('username'),
+        password_env_var: formData.get('password_env_var')
+    };
+    
+    btn.disabled = true;
+    btn.innerHTML = 'Saving...';
+    err.classList.add('hidden');
+    
+    try {
+        const response = await fetch('/api/environments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        
+        if (!response.ok) {
+            const result = await response.json();
+            throw new Error(result.detail || result.error || 'Failed to create environment');
+        }
+        
+        // Reload to show new env
+        window.location.reload();
+        
+    } catch (error) {
+        err.textContent = error.message;
+        err.classList.remove('hidden');
+        btn.disabled = false;
+        btn.innerHTML = 'Save Environment';
+    }
+}
+
+async function deleteEnv(id) {
+    if (!confirm('Are you sure you want to delete this environment?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/environments/${id}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            const result = await response.json();
+            throw new Error(result.detail || result.error || 'Failed to delete environment');
+        }
+        
+        window.location.reload();
+    } catch (error) {
+        alert(error.message);
+    }
+}
+</script>
+{% endblock %}

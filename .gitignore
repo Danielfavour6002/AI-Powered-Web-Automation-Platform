@@ -1,0 +1,90 @@
+# ============================================================
+#  QA Platform — .gitignore
+# ============================================================
+
+# --- Secrets & Environment ---
+.env
+auth.json
+engine/.auth_state.json
+*.auth_state.json
+
+# --- Database files (all environments) ---
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+
+# --- Test output (runs, screenshots, videos, traces) ---
+output/
+!output/.gitkeep
+
+# --- Python bytecode ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Build & distribution ---
+*.egg-info/
+dist/
+build/
+*.egg
+*.whl
+.eggs/
+
+# --- Logs ---
+*.log
+logs/
+
+# --- IDE & editor files ---
+.vscode/settings.json
+.idea/
+*.iml
+*.suo
+*.user
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- Pytest & coverage ---
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# --- Playwright artifacts ---
+playwright-report/
+test-results/
+
+# --- Temp / scratch files in root ---
+output.txt
+generate_auth_error.png
+fix.py
+fix_assignment.py
+debug_ai.py
+mock_recording.py
+check_tests.py
+e2e_tests.py
+test.py
+test_out.py
+test_ai_studio.py
+playwright_test.py
+import_location_test.py
+refactor_db.py
+revert_db.py
+
+# --- Node modules (if ever used) ---
+node_modules/
+
+# --- Archives ---
+*.zip
+*.tar.gz
+*.rar

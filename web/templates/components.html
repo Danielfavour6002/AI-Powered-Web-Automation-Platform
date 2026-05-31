@@ -1,0 +1,55 @@
+{% macro status_badge(status) %}
+  {% set color_class = '' %}
+  {% set pulse = '' %}
+  {% if status == 'passed' %}{% set color_class = 'badge-green' %}
+  {% elif status == 'failed' or status == 'error' %}{% set color_class = 'badge-red' %}
+  {% elif status == 'running' %}{% set color_class = 'badge-blue' %}{% set pulse = 'pulse' %}
+  {% elif status == 'pending' %}{% set color_class = 'badge-amber' %}
+  {% elif status == 'skipped' %}{% set color_class = 'badge-gray' %}
+  {% endif %}
+  <span class="badge {{ color_class }} {{ pulse }}">{{ status | capitalize }}</span>
+{% endmacro %}
+
+{% macro btn_primary(text, onclick='', id='', type='button') %}
+  <button type="{{ type }}" id="{{ id }}" onclick="{{ onclick }}" class="btn btn-primary">{{ text }}</button>
+{% endmacro %}
+
+{% macro btn_secondary(text, onclick='', id='', type='button') %}
+  <button type="{{ type }}" id="{{ id }}" onclick="{{ onclick }}" class="btn btn-secondary">{{ text }}</button>
+{% endmacro %}
+
+{% macro btn_danger(text, onclick='', id='', type='button') %}
+  <button type="{{ type }}" id="{{ id }}" onclick="{{ onclick }}" class="btn btn-danger">{{ text }}</button>
+{% endmacro %}
+
+{% macro card(title, content) %}
+  <div class="card">
+    {% if title %}<div class="card-header">{{ title }}</div>{% endif %}
+    <div class="card-body">{{ caller() if caller else content|safe }}</div>
+  </div>
+{% endmacro %}
+
+{% macro stat_card(value, label, icon_svg, val_color_class='') %}
+  <div class="stat-card">
+    <div class="stat-top">
+      <div class="stat-value {{ val_color_class }}">{{ value }}</div>
+      <div class="stat-icon">{{ icon_svg | safe }}</div>
+    </div>
+    <div class="stat-label">{{ label }}</div>
+  </div>
+{% endmacro %}
+
+{% macro empty_state(icon_svg, title, message, action_text='', action_url='') %}
+  <div class="empty-state">
+    <div class="empty-icon">{{ icon_svg | safe }}</div>
+    <div class="empty-title">{{ title }}</div>
+    <div class="empty-message">{{ message }}</div>
+    {% if action_text and action_url %}
+      <a href="{{ action_url }}" class="btn btn-primary">{{ action_text }}</a>
+    {% endif %}
+  </div>
+{% endmacro %}
+
+{% macro loading_spinner() %}
+  <div class="spinner"></div>
+{% endmacro %}

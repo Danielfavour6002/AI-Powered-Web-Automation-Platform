@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block breadcrumb %}
+<a href="/tests" class="text-secondary hover:text-primary">Tests</a> <span class="mx-2 text-tertiary">/</span> Create
+{% endblock %}
+
+{% block content %}
+<div class="page-header mb-6">
+    <h1 class="page-title">New Test</h1>
+</div>
+
+<div class="card p-0 overflow-hidden max-w-3xl">
+    <div class="tabs border-b border-strong px-4 pt-4">
+        <button class="tab active" data-tab="record">Record New Test</button>
+        <button class="tab" data-tab="import">Import from Excel</button>
+    </div>
+    
+    <div class="tab-content block p-6" data-tab-content="record">
+        <div class="form-group mb-4">
+            <label>Test Name <span class="text-red">*</span></label>
+            <input type="text" id="cr-name" required class="input w-full">
+        </div>
+        <div class="form-group mb-4">
+            <label>Environment</label>
+            <select id="cr-env" class="input w-full" onchange="const url = this.options[this.selectedIndex].dataset.url; if(url) document.getElementById('cr-url').value = url;">
+                <option value="">Default (.env Config)</option>
+                {% for env in environments %}
+                <option value="{{ env.id }}" data-url="{{ env.url }}">{{ env.name }} ({{ env.username }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group mb-4">
+            <label>Target URL <span class="text-red">*</span></label>
+            <input type="url" id="cr-url" required class="input w-full" placeholder="https://">
+        </div>
+        <div class="form-group mb-6">
+            <label>Description</label>
+            <textarea id="cr-desc" class="input w-full" rows="3"></textarea>
+        </div>
+        
+        <div id="cr-recording-panel" class="hidden p-6 border border-blue bg-blue-dim rounded-lg mb-6">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="spinner border-blue"></div>
+                <h3 class="text-primary font-medium">Recording in progress...</h3>
+            </div>
+            <p class="text-secondary mb-4 text-sm ml-8">Playwright recorder is open. Interact with the browser, then click Stop Recording below.</p>
+            <div class="ml-8">
+                <button class="btn btn-danger" id="btn-cr-stop" onclick="stopTestRecord()">Stop Recording</button>
+            </div>
+        </div>
+        
+        <button class="btn btn-primary" id="btn-cr-start" onclick="startTestRecord()">Create & Start Recording</button>
+    </div>
+    
+    <div class="tab-content hidden p-6" data-tab-content="import">
+        <!-- Step 1: Upload -->
+        <div id="import-step-1">
+            <div class="form-group mb-4">
+                <label>Test Name <span class="text-red">*</span></label>
+                <input type="text" id="imp-name" required class="input w-full" placeholder="e.g. Sales Order Flow">
+            </div>
+            <div class="form-group mb-4">
+                <label>Target URL <span class="text-red">*</span></label>
+                <input type="url" id="imp-url" required class="input w-full" placeholder="https://">
+            </div>
+            <div class="form-group mb-4">
+                <label>Upload Excel File (.xlsx)</label>
+                <input type="file" id="imp-file" accept=".xlsx" class="input w-full py-2">
+            </div>
+            <button class="btn btn-primary mt-2" id="btn-imp-upload" onclick="uploadExcelForImport()">Analyze File</button>
+        </div>
+        
+        <!-- Step 2: Select Scenario -->
+        <div id="import-step-2" class="hidden">
+            <h3 class="section-title">Select Scenario</h3>
+            <div class="mb-4 text-sm text-secondary">Found <span id="imp-scen-count">0</span> scenarios in the uploaded file. Select one to import:</div>
+            
+            <div class="form-group mb-6">
+                <select id="imp-scenario" class="input w-full py-2 bg-surface">
+                    <!-- Options populated via JS -->
+                </select>
+            </div>
+            
+            <div class="flex gap-3">
+                <button class="btn btn-secondary" onclick="document.getElementById('import-step-2').classList.add('hidden'); document.getElementById('import-step-1').classList.remove('hidden');">Back</button>
+                <button class="btn btn-primary" id="btn-imp-confirm" onclick="confirmExcelImport()">Import Steps</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+{% import "components.html" as ui %}
+
+{% block breadcrumb %}
+<a href="/tests" class="text-secondary hover:text-primary">Tests</a> <span class="mx-2 text-tertiary">/</span> {{ test.name }}
+{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-center mb-6">
+    <h1 class="page-title text-2xl" id="test-name-heading">{{ test.name }}</h1>
+    <div class="flex gap-2">
+        <button class="btn btn-secondary border-accent text-accent hover:bg-accent hover:text-white" onclick="openAgentModal('{{ test.id }}', '{{ test.name|escape }}')">
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="mr-1"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+            Run Autonomously
+        </button>
+        <button class="btn btn-primary" onclick="openReplayModal('{{ test.id }}', '{{ test.name|escape }}')">Run Test</button>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+    {{ ui.card('Details', '
+        <div class="grid grid-cols-[100px_1fr] gap-y-3 text-sm">
+            <div class="text-secondary">URL</div><div class="font-mono text-xs text-primary break-all">' ~ test.url ~ '</div>
+            <div class="text-secondary">Mode</div><div><span class="badge badge-gray">' ~ test.mode ~ '</span></div>
+            <div class="text-secondary">Created</div><div class="text-primary">' ~ test.created_at[:16].replace('T', ' ') ~ '</div>
+            <div class="text-secondary">Steps</div><div class="text-primary">' ~ test.step_count ~ '</div>
+        </div>
+    ') }}
+    
+    {% call ui.card('Last Run') %}
+        <div class="text-sm">
+            {% if runs %}
+                <a href="/runs/{{ runs[0].id }}" class="link flex items-center gap-2">
+                    {{ ui.status_badge(runs[0].status.value) }} 
+                    <span class="text-secondary">{{ runs[0].created_at[:16].replace('T', ' ') }}</span> &rarr;
+                </a>
+            {% else %}
+                <span class="text-tertiary italic">No runs yet</span>
+            {% endif %}
+        </div>
+    {% endcall %}
+</div>
+
+<h2 class="section-title mb-4">Steps</h2>
+<div class="card p-0 mb-8" style="overflow-x: auto;">
+    {% if steps %}
+    <table class="table w-full" id="steps-table" data-test-id="{{ test.id }}" style="min-width: 800px;">
+        <thead class="bg-elevated">
+            <tr>
+                <th width="40" class="text-center">#</th>
+                <th width="120">Action</th>
+                <th>Selector / Value</th>
+                <th>Description</th>
+                <th width="60" class="text-right pr-4"></th>
+            </tr>
+        </thead>
+        <tbody id="steps-tbody">
+            {% for step in steps %}
+            <tr draggable="true" 
+                data-step-id="{{ step.id }}" 
+                data-seq="{{ step.sequence }}" 
+                data-action="{{ step.action.value }}"
+                data-selector="{{ step.selector|escape if step.selector else '' }}"
+                data-value="{{ step.value|escape if step.value else '' }}"
+                data-description="{{ step.description|escape if step.description else '' }}"
+                class="drag-row group hover:bg-hover border-b border-strong last:border-0 transition-colors">
+                <td class="drag-handle text-tertiary cursor-grab text-center select-none group-hover:text-primary">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="inline opacity-0 group-hover:opacity-100 -ml-4 mr-1"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"></path></svg>
+                    {{ step.sequence }}
+                </td>
+                <td><span class="badge badge-gray">{{ step.action.value }}</span></td>
+                <td class="font-mono text-xs text-secondary">
+                    <div class="truncate max-w-[300px]" title="{{ step.selector }}">{{ step.selector or '-' }}</div>
+                    {% if step.value %}
+                        <div class="mt-1 font-sans">
+                            {% if step.is_sensitive %}
+                                <span class="inline-flex items-center gap-1 text-tertiary bg-elevated px-2 py-0.5 rounded text-[11px] border border-strong">
+                                    <svg width="10" height="10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                                    REDACTED
+                                </span>
+                            {% else %}
+                                <span class="text-primary">'{{ step.value }}'</span>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                </td>
+                <td class="text-sm text-primary">{{ step.description or '-' }}</td>
+                <td class="text-right pr-4">
+                    <button class="icon-btn text-accent p-1 hover:bg-accent-dim rounded transition-all mr-2" style="opacity: 0.8;" onclick="openEditStepModal(this)" title="Edit step">
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                    </button>
+                    <button class="icon-btn text-red p-1 hover:bg-red-dim rounded transition-all" style="opacity: 0.8;" onclick="deleteStep('{{ test.id }}', '{{ step.id }}')" title="Delete step">
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="p-3 bg-surface border-t border-strong text-center">
+        <button class="btn btn-secondary text-sm" onclick="openAddStepModal('{{ test.id }}')">+ Add Step Manually</button>
+    </div>
+    {% else %}
+    <div class="py-12 text-center">
+        <svg width="48" height="48" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="mx-auto text-tertiary mb-3"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+        <p class="text-secondary mb-4">No steps recorded.</p>
+        <button class="btn btn-secondary" onclick="openAddStepModal('{{ test.id }}')">+ Add Step Manually</button>
+    </div>
+    {% endif %}
+</div>
+
+<h2 class="section-title mb-4">Run History</h2>
+<div class="card p-0 overflow-hidden">
+    {% if runs %}
+    <table class="table w-full">
+        <thead class="bg-elevated">
+            <tr>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Duration</th>
+                <th>Pass Rate</th>
+                <th class="text-right pr-4">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for run in runs %}
+            <tr class="border-b border-strong last:border-0 hover:bg-hover transition-colors">
+                <td class="text-sm">{{ run.created_at[:16].replace('T', ' ') }}</td>
+                <td>{{ ui.status_badge(run.status.value) }}</td>
+                <td class="text-sm">{% if run.duration_seconds %}{{ run.duration_seconds | round(1) }}s{% else %}-{% endif %}</td>
+                <td class="text-sm">
+                    <span class="text-green">{{ run.passed_count }}</span> / <span class="text-secondary">{{ run.step_count }}</span>
+                </td>
+                <td class="text-right pr-4"><a href="/runs/{{ run.id }}" class="link text-sm">View &rarr;</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="py-8 text-center text-secondary text-sm">No runs yet.</div>
+    {% endif %}
+</div>
+
+<!-- Replay Modal -->
+<div id="replay-modal" class="modal hidden">
+    <div class="modal-content card max-w-md mx-auto mt-32">
+        <h2 class="section-title mb-4">Run Test: <span id="rm-test-name" class="text-primary"></span></h2>
+        
+        <div class="form-group mb-4">
+            <label class="text-sm text-secondary mb-1 block">Environment</label>
+            <select id="rm-env" class="input w-full">
+                <option value="">Default (.env Config)</option>
+                {% for env in environments %}
+                <option value="{{ env.id }}">{{ env.name }} ({{ env.username }})</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group mb-4">
+            <label class="flex items-center gap-2 cursor-pointer text-sm">
+                <input type="checkbox" id="rm-headless" checked class="form-checkbox">
+                <span>Headless (no UI)</span>
+            </label>
+        </div>
+        <div class="form-group mb-6">
+            <label class="text-sm text-secondary mb-1 block">Speed</label>
+            <select id="rm-speed" class="input w-full">
+                <option value="0">Fast (0ms delay)</option>
+                <option value="1500" selected>Normal (1.5s delay)</option>
+                <option value="3000">Slow (3s delay)</option>
+            </select>
+        </div>
+        <div class="flex justify-end gap-2 border-t border-strong pt-4 mt-4">
+            <button class="btn btn-secondary" onclick="document.getElementById('replay-modal').classList.add('hidden')">Cancel</button>
+            <button class="btn btn-primary" id="rm-start" onclick="submitReplay()">Start Replay</button>
+        </div>
+    </div>
+</div>
+
+<!-- Agent Modal -->
+<div id="agent-modal" class="modal hidden">
+    <div class="modal-content card max-w-md mx-auto mt-32">
+        <h2 class="section-title mb-4">Autonomous Run: <span id="am-test-name" class="text-primary"></span></h2>
+        <p class="text-secondary text-sm mb-4">The AI will launch a browser and dynamically figure out how to complete the test steps on the fly.</p>
+        
+        <div class="form-group mb-4">
+            <label class="text-sm text-secondary mb-1 block">Environment</label>
+            <select id="am-env" class="input w-full">
+                <option value="">Default (.env Config)</option>
+                {% for env in environments %}
+                <option value="{{ env.id }}">{{ env.name }} ({{ env.username }})</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group mb-6">
+            <label class="text-sm text-secondary mb-1 block">OpenAI API Key (Required)</label>
+            <input type="password" id="am-api-key" class="input w-full" placeholder="sk-...">
+        </div>
+        <div class="flex justify-end gap-2 border-t border-strong pt-4 mt-4">
+            <button class="btn btn-secondary" onclick="document.getElementById('agent-modal').classList.add('hidden')">Cancel</button>
+            <button class="btn btn-primary" id="am-start" onclick="submitAgentRun()">Start Autonomous Agent</button>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Step Modal -->
+<div id="edit-step-modal" class="modal hidden">
+    <div class="modal-content card max-w-md mx-auto mt-32">
+        <h2 class="section-title mb-4">Edit Step</h2>
+        
+        <input type="hidden" id="es-step-id">
+        <input type="hidden" id="es-test-id">
+        
+        <div class="form-group mb-4">
+            <label class="text-sm text-secondary mb-1 block">Action</label>
+            <select id="es-action" class="input w-full">
+                <option value="navigate">navigate</option>
+                <option value="click">click</option>
+                <option value="fill">fill</option>
+                <option value="select">select</option>
+                <option value="check">check</option>
+                <option value="uncheck">uncheck</option>
+                <option value="press">press</option>
+                <option value="wait">wait</option>
+                <option value="assert_visible">assert_visible</option>
+                <option value="assert_text">assert_text</option>
+                <option value="screenshot">screenshot</option>
+            </select>
+        </div>
+
+        <div class="form-group mb-4">
+            <label class="text-sm text-secondary mb-1 block">Selector</label>
+            <input type="text" id="es-selector" class="input w-full" placeholder="e.g. #username or xpath=...">
+        </div>
+
+        <div class="form-group mb-4">
+            <label class="text-sm text-secondary mb-1 block">Value</label>
+            <input type="text" id="es-value" class="input w-full" placeholder="Value for fill, select, press, assert_text, etc.">
+        </div>
+
+        <div class="form-group mb-6">
+            <label class="text-sm text-secondary mb-1 block">Description</label>
+            <input type="text" id="es-description" class="input w-full" placeholder="Step description">
+        </div>
+
+        <div class="flex justify-end gap-2 border-t border-strong pt-4 mt-4">
+            <button class="btn btn-secondary" onclick="document.getElementById('edit-step-modal').classList.add('hidden')">Cancel</button>
+            <button class="btn btn-primary" id="es-save" onclick="saveStepEdit()">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<!-- Add Step Modal -->
+<div id="add-step-modal" class="modal hidden">
+    <div class="modal-content card max-w-md mx-auto mt-32">
+        <h2 class="section-title mb-4">Add Step</h2>
+        
+        <input type="hidden" id="as-test-id">
+        
+        <div class="form-group mb-4">
+            <label class="text-sm text-secondary mb-1 block">Action</label>
+            <select id="as-action" class="input w-full">
+                <option value="navigate">navigate</option>
+                <option value="click">click</option>
+                <option value="fill">fill</option>
+                <option value="select">select</option>
+                <option value="check">check</option>
+                <option value="uncheck">uncheck</option>
+                <option value="press">press</option>
+                <option value="wait">wait</option>
+                <option value="assert_visible">assert_visible</option>
+                <option value="assert_text">assert_text</option>
+                <option value="screenshot">screenshot</option>
+            </select>
+        </div>
+
+        <div class="form-group mb-4">
+            <label class="text-sm text-secondary mb-1 block">Selector</label>
+            <input type="text" id="as-selector" class="input w-full" placeholder="e.g. #username or xpath=...">
+        </div>
+
+        <div class="form-group mb-4">
+            <label class="text-sm text-secondary mb-1 block">Value</label>
+            <input type="text" id="as-value" class="input w-full" placeholder="Value for fill, select, press, assert_text, etc.">
+        </div>
+
+        <div class="form-group mb-6">
+            <label class="text-sm text-secondary mb-1 block">Description</label>
+            <input type="text" id="as-description" class="input w-full" placeholder="Step description">
+        </div>
+
+        <div class="flex justify-end gap-2 border-t border-strong pt-4 mt-4">
+            <button class="btn btn-secondary" onclick="document.getElementById('add-step-modal').classList.add('hidden')">Cancel</button>
+            <button class="btn btn-primary" id="as-save" onclick="saveAddStep()">Add Step</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function openAgentModal(id, name) {
+        window.currentTestId = id;
+        document.getElementById('am-test-name').innerText = name;
+        document.getElementById('agent-modal').classList.remove('hidden');
+    }
+
+    async function submitAgentRun() {
+        const apiKey = document.getElementById('am-api-key').value;
+        const envSelect = document.getElementById('am-env');
+        const envId = envSelect ? envSelect.value : null;
+        
+        if (!apiKey) {
+            alert("Please enter an OpenAI API key.");
+            return;
+        }
+
+        const btn = document.getElementById('am-start');
+        btn.disabled = true;
+        btn.innerText = "Starting...";
+
+        try {
+            const payload = {api_key: apiKey};
+            if (envId) {
+                payload.env_id = envId;
+            }
+            
+            const res = await fetch(`/api/replay/${window.currentTestId}/agent`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            
+            if (res.ok) {
+                window.location.href = "/runs/" + data.run_id;
+            } else {
+                throw new Error(data.detail || data.message);
+            }
+        } catch (e) {
+            alert(e.message);
+            btn.disabled = false;
+            btn.innerText = "Start Autonomous Agent";
+        }
+    }
+</script>
+{% endblock %}
