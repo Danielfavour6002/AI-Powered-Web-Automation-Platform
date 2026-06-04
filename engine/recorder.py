@@ -49,6 +49,11 @@ class Recorder:
                         cmd.insert(4, f"--load-storage={state_file}")
                 
                 # Match the test runner's dimensions and the user's laptop screen perfectly
+                import os
+                ext_path = Path(__file__).resolve().parent / "recorder_extension"
+                existing_args = os.environ.get("PLAYWRIGHT_CHROMIUM_LAUNCH_ARGS", "")
+                ext_args = f"--disable-extensions-except={ext_path.as_posix()} --load-extension={ext_path.as_posix()}"
+                os.environ["PLAYWRIGHT_CHROMIUM_LAUNCH_ARGS"] = f"{existing_args} {ext_args}".strip()
                 
                 self.process = subprocess.Popen(
                     cmd,

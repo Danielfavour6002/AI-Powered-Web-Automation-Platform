@@ -1,5 +1,23 @@
 // QA Platform Vanilla JS
 
+// ─── Safe JSON Helper ────────────────────────────────────────────────────────
+// Reads response body as text first, then parses as JSON.
+// Prevents "Unexpected token 'I'" when server returns plain-text error pages.
+async function safeJson(res) {
+    const text = await res.text();
+    if (!text) {
+        if (!res.ok) throw new Error(`Server error (HTTP ${res.status})`);
+        return {};
+    }
+    try {
+        return JSON.parse(text);
+    } catch {
+        // If the server returned non-JSON and the status is bad, use the text as the error
+        if (!res.ok) throw new Error(text.substring(0, 200) || `HTTP ${res.status}`);
+        throw new Error('Server returned an unexpected non-JSON response');
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initTabs();
     initMobileNav();
@@ -101,6 +119,12 @@ async function startQuickRecord() {
     const btn = document.getElementById('btn-qr-start');
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div>';
+    // Show stop button and hide start button
+    const stopBtn = document.getElementById('btn-qr-stop');
+    if (stopBtn) {
+        stopBtn.classList.remove('hidden');
+    }
+    btn.classList.add('hidden');
     
     try {
         // Create test first
@@ -111,7 +135,7 @@ async function startQuickRecord() {
         });
         
         if (!tRes.ok) throw new Error("Failed to create test");
-        const testData = await tRes.json();
+        const testData = await safeJson(tRes);
         
         // Start recording
         const rRes = await fetch('/api/recording/start', {
@@ -141,10 +165,9 @@ async function stopQuickRecord() {
     
     try {
         const res = await fetch('/api/recording/stop', { method: 'POST' });
-        if (!res.ok) throw new Error(await res.text());
-        
-        const data = await res.json();
-        showToast(data.message, "success");
+        const data = await safeJson(res);
+        if (!res.ok) throw new Error(data.detail || data.message || await Promise.resolve('Failed to stop recording'));
+        showToast(data.message || 'Done', "success");
         
         setTimeout(() => {
             window.location.href = `/tests/${window.currentRecordingTestId}`;
@@ -312,16 +335,17 @@ function openReplayModal(testId, testName) {
 async function submitReplay() {
     const headless = document.getElementById('rm-headless').checked;
     const speed = parseInt(document.getElementById('rm-speed').value);
-    const envSelect = document.getElementById('rm-env');
-    const envId = envSelect ? envSelect.value : null;
+    const clientSelect = document.getElementById('rm-client');
+    const clientId = clientSelect ? clientSelect.value : null;
     
     const btn = document.getElementById('rm-start');
     btn.disabled = true;
+    btn.innerHTML = '<div class="spinner" style="display:inline-block;width:14px;height:14px;margin-right:6px;"></div> Starting…';
     
     try {
         const payload = {headless, slow_mo: speed};
-        if (envId) {
-            payload.env_id = envId;
+        if (clientId) {
+            payload.env_id = clientId;
         }
         
         const res = await fetch(`/api/replay/${window.currentReplayTestId}`, {
@@ -330,13 +354,14 @@ async function submitReplay() {
             body: JSON.stringify(payload)
         });
         
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "Failed to start replay");
+        const data = await safeJson(res);
+        if (!res.ok) throw new Error(data.detail || data.message || "Failed to start replay");
         
         window.location.href = `/runs/${data.run_id}`;
     } catch (e) {
         showToast(e.message, "error");
         btn.disabled = false;
+        btn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="display:inline; margin-right:5px; vertical-align:middle;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg> Start Run';
     }
 }
 
@@ -413,7 +438,7 @@ async function saveStepEdit() {
             })
         });
         
-        const data = await res.json();
+        const data = await safeJson(res);
         if (res.ok) {
             showToast("Step updated successfully", "success");
             setTimeout(() => window.location.reload(), 500);
@@ -476,7 +501,7 @@ async function saveAddStep() {
             })
         });
         
-        const data = await res.json();
+        const data = await safeJson(res);
         if (res.ok) {
             showToast("Step added successfully", "success");
             setTimeout(() => window.location.reload(), 500);
@@ -514,8 +539,16 @@ function initMobileNav() {
     const toggle = document.getElementById('mobile-nav-toggle');
     const sidebar = document.getElementById('sidebar');
     if (toggle && sidebar) {
-        toggle.addEventListener('click', () => {
+        toggle.addEventListener('click', (e) => {
+            e.stopPropagation();
             sidebar.classList.toggle('open');
+        });
+        
+        // Close mobile sidebar on click outside
+        document.addEventListener('click', (e) => {
+            if (sidebar.classList.contains('open') && !sidebar.contains(e.target) && !toggle.contains(e.target)) {
+                sidebar.classList.remove('open');
+            }
         });
     }
 }
@@ -644,8 +677,8 @@ async function uploadExcelForImport() {
             body: formData
         });
         
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "Upload failed");
+        const data = await safeJson(res);
+        if (!res.ok) throw new Error(data.detail || data.message || "Upload failed");
         
         uploadedFilePath = data.file_path;
         
@@ -689,7 +722,7 @@ async function confirmExcelImport() {
         });
         
         if (!tRes.ok) throw new Error("Failed to create test entry");
-        const testData = await tRes.json();
+        const testData = await safeJson(tRes);
         
         // Then import the steps
         const iRes = await fetch(`/api/reports/import-excel/${testData.id}/confirm`, {
@@ -701,8 +734,8 @@ async function confirmExcelImport() {
             })
         });
         
-        const iData = await iRes.json();
-        if (!iRes.ok) throw new Error(iData.detail || "Import failed");
+        const iData = await safeJson(iRes);
+        if (!iRes.ok) throw new Error(iData.detail || iData.message || "Import failed");
         
         showToast(iData.message, "success");
         setTimeout(() => {

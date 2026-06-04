@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "QA Platform Recording Indicator",
+  "version": "1.0",
+  "description": "Displays a recording indicator badge when recording test cases.",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

@@ -14,6 +14,13 @@ LOGIN = {
         "input[autocomplete='current-password']",
         "input[type='password']"
     ],
+    "next_btn": [
+        "button:has-text('Next')",
+        "#idcs-signin-basic-signin-form-submit",
+        "button[type='submit']:has-text('Next')",
+        "[id*='next']",
+        ".idcs-signin-button"
+    ],
     "submit": [
         "#btnActive", 
         "button[type='submit']", 

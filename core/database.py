@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from enum import Enum
 
-from core.models import Test, Step, Run, Result, DashboardStats, RunStatus, ActionType, Environment
+from core.models import Test, Step, Run, Result, DashboardStats, RunStatus, ActionType, Environment, ClientProfile, LLMProvider
 from core.exceptions import DatabaseError
 
 def _now_iso() -> str:
@@ -68,7 +68,9 @@ async def init_db(db_path: Path) -> None:
                     passed_count INTEGER DEFAULT 0,
                     failed_count INTEGER DEFAULT 0,
                     error_message TEXT,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    client_id TEXT,
+                    run_params TEXT
                 )
             ''')
 
@@ -104,6 +106,66 @@ async def init_db(db_path: Path) -> None:
                 )
             ''')
 
+            await db.execute('''
+                CREATE TABLE IF NOT EXISTS app_config (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                )
+            ''')
+            
+            await db.execute('''
+                CREATE TABLE IF NOT EXISTS clients (
+                    id TEXT PRIMARY KEY,
+                    display_name TEXT NOT NULL,
+                    app_type TEXT NOT NULL,
+                    base_url TEXT NOT NULL,
+                    username TEXT NOT NULL,
+                    pod_identifier TEXT,
+                    consultant_initials TEXT,
+                    is_active INTEGER DEFAULT 1,
+                    custom_wait_selectors TEXT,
+                    extra_headers TEXT,
+                    extra_cookies TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            ''')
+            
+            await db.execute('''
+                CREATE TABLE IF NOT EXISTS llm_providers (
+                    name TEXT PRIMARY KEY,
+                    api_key_encrypted TEXT,
+                    model_name TEXT NOT NULL,
+                    base_url_override TEXT,
+                    max_tokens INTEGER DEFAULT 4096,
+                    temperature REAL DEFAULT 0.7,
+                    is_active INTEGER DEFAULT 0
+                )
+            ''')
+            
+            await db.execute('''
+                CREATE TABLE IF NOT EXISTS master_password_verify (
+                    salt TEXT PRIMARY KEY,
+                    verifier TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            ''')
+
+            # Run table runs migrations for existing schema backward compatibility
+            async with db.execute("PRAGMA table_info(runs)") as cursor:
+                columns = [row[1] for row in await cursor.fetchall()]
+                if 'client_id' not in columns:
+                    await db.execute("ALTER TABLE runs ADD COLUMN client_id TEXT")
+                if 'run_params' not in columns:
+                    await db.execute("ALTER TABLE runs ADD COLUMN run_params TEXT")
+
+            # Migrate any outdated Gemini model name to gemini-2.0-flash (stable).
+            # gemini-1.5-flash and gemini-1.5-pro are no longer available on the
+            # v1beta endpoint that litellm targets — upgrade all legacy records.
+            await db.execute(
+                "UPDATE llm_providers SET model_name = 'gemini/gemini-2.0-flash' "
+                "WHERE model_name LIKE '%gemini-1.5%'"
+            )
             await db.commit()
     except Exception as e:
         raise DatabaseError(f"Failed to initialize database: {e}")
@@ -176,6 +238,65 @@ async def delete_test(db_path: Path, test_id: str) -> None:
         await db.commit()
 
 
+def normalize_action(action: str) -> str:
+    """Normalize action string to match SQLite check constraints and ActionType enum."""
+    if not action:
+        return "assert_text"
+    act = action.strip().lower()
+    mapping = {
+        "navigate": "navigate",
+        "goto": "navigate",
+        "open": "navigate",
+        "click": "click",
+        "hover": "click",
+        "fill": "fill",
+        "type": "fill",
+        "input": "fill",
+        "select": "select",
+        "choose": "select",
+        "check": "check",
+        "uncheck": "uncheck",
+        "press": "press",
+        "key": "press",
+        "type_key": "press",
+        "wait": "wait",
+        "delay": "wait",
+        "sleep": "wait",
+        "assert_visible": "assert_visible",
+        "assert_element": "assert_visible",
+        "verify_visible": "assert_visible",
+        "assert_text": "assert_text",
+        "verify_text": "assert_text",
+        "assert": "assert_text",
+        "verify": "assert_text",
+        "screenshot": "screenshot",
+        "capture": "screenshot",
+    }
+    if act in mapping:
+        return mapping[act]
+    if "navigate" in act or "goto" in act or "open" in act:
+        return "navigate"
+    if "assert" in act or "verify" in act or "check" in act:
+        if "text" in act or "value" in act:
+            return "assert_text"
+        return "assert_visible"
+    if "input" in act or "type" in act or "write" in act:
+        return "fill"
+    if "click" in act or "press" in act or "tap" in act or "hover" in act:
+        return "click"
+    if "wait" in act or "sleep" in act or "delay" in act:
+        return "wait"
+    if "screenshot" in act or "capture" in act or "image" in act:
+        return "screenshot"
+    valid_actions = {
+        'navigate', 'click', 'fill', 'select', 'check', 'uncheck',
+        'press', 'wait', 'assert_visible', 'assert_text', 'screenshot'
+    }
+    if act in valid_actions:
+        return act
+    return "assert_text"
+
+
 # --- Steps CRUD ---
 
 async def create_step(db_path: Path, test_id: str, sequence: int, action: str, 
@@ -184,13 +305,14 @@ async def create_step(db_path: Path, test_id: str, sequence: int, action: str,
     step_id = uuid4().hex
     now = _now_iso()
     is_sensitive_int = 1 if is_sensitive else 0
+    normalized_act = normalize_action(action)
     
     async with aiosqlite.connect(db_path) as db:
         await db.execute("PRAGMA foreign_keys = ON")
         await db.execute(
             """INSERT INTO steps (id, test_id, sequence, action, selector, value, description, is_sensitive, created_at) 
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (step_id, test_id, sequence, action, selector, value, description, is_sensitive_int, now)
+            (step_id, test_id, sequence, normalized_act, selector, value, description, is_sensitive_int, now)
         )
         await db.execute("UPDATE tests SET step_count = step_count + 1, updated_at = ? WHERE id = ?", (now, test_id))
         await db.commit()
@@ -230,12 +352,13 @@ async def update_step_properties(db_path: Path, step_id: str, action: str,
                                  description: Optional[str], is_sensitive: bool) -> None:
     now = _now_iso()
     is_sensitive_int = 1 if is_sensitive else 0
+    normalized_act = normalize_action(action)
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             """UPDATE steps 
                SET action = ?, selector = ?, value = ?, description = ?, is_sensitive = ?
                WHERE id = ?""",
-            (action, selector, value, description, is_sensitive_int, step_id)
+            (normalized_act, selector, value, description, is_sensitive_int, step_id)
         )
         cursor = await db.execute("SELECT test_id FROM steps WHERE id = ?", (step_id,))
         row = await cursor.fetchone()
@@ -277,14 +400,14 @@ async def delete_steps_for_test(db_path: Path, test_id: str) -> None:
 
 # --- Runs CRUD ---
 
-async def create_run(db_path: Path, test_id: str, test_name: str, consultant: Optional[str] = None, pod: Optional[str] = None) -> Run:
+async def create_run(db_path: Path, test_id: str, test_name: str, consultant: Optional[str] = None, pod: Optional[str] = None, client_id: Optional[str] = None, run_params: Optional[str] = None) -> Run:
     run_id = uuid4().hex
     now = _now_iso()
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
-            """INSERT INTO runs (id, test_id, test_name, status, consultant, pod, created_at)
-               VALUES (?, ?, ?, 'pending', ?, ?, ?)""",
-            (run_id, test_id, test_name, consultant, pod, now)
+            """INSERT INTO runs (id, test_id, test_name, status, consultant, pod, created_at, client_id, run_params)
+               VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?)""",
+            (run_id, test_id, test_name, consultant, pod, now, client_id, run_params)
         )
         await db.commit()
     return await get_run(db_path, run_id)
@@ -485,4 +608,199 @@ async def get_dashboard_stats(db_path: Path) -> DashboardStats:
         pass_rate=pass_rate,
         recent_runs=recent_runs
     )
+
+
+# --- App Config CRUD ---
+
+async def get_config_value(db_path: Path, key: str, default: Optional[str] = None) -> Optional[str]:
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute("SELECT value FROM app_config WHERE key = ?", (key,)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return row[0]
+            return default
+
+async def set_config_value(db_path: Path, key: str, value: str) -> None:
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)",
+            (key, value)
+        )
+        await db.commit()
+
+async def get_all_configs(db_path: Path) -> Dict[str, str]:
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute("SELECT key, value FROM app_config") as cursor:
+            rows = await cursor.fetchall()
+            return {row[0]: row[1] for row in rows}
+
+
+# --- Clients CRUD ---
+
+async def create_client(db_path: Path, display_name: str, app_type: str, base_url: str, username: str,
+                        pod_identifier: Optional[str] = None, consultant_initials: Optional[str] = None,
+                        is_active: bool = True, custom_wait_selectors: Optional[str] = None,
+                        extra_headers: Optional[str] = None, extra_cookies: Optional[str] = None) -> ClientProfile:
+    client_id = uuid4().hex
+    now = _now_iso()
+    is_active_int = 1 if is_active else 0
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            """INSERT INTO clients (
+                id, display_name, app_type, base_url, username, pod_identifier, consultant_initials,
+                is_active, custom_wait_selectors, extra_headers, extra_cookies, created_at, updated_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (client_id, display_name, app_type, base_url, username, pod_identifier, consultant_initials,
+             is_active_int, custom_wait_selectors, extra_headers, extra_cookies, now, now)
+        )
+        await db.commit()
+    return await get_client(db_path, client_id)
+
+async def get_client(db_path: Path, client_id: str) -> ClientProfile:
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = _dict_factory
+        async with db.execute("SELECT * FROM clients WHERE id = ?", (client_id,)) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                raise DatabaseError(f"Client profile not found: {client_id}")
+            row['is_active'] = bool(row['is_active'])
+            return ClientProfile(**row)
+
+async def list_clients(db_path: Path, active_only: bool = False) -> List[ClientProfile]:
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = _dict_factory
+        if active_only:
+            query = "SELECT * FROM clients WHERE is_active = 1 ORDER BY display_name ASC"
+        else:
+            query = "SELECT * FROM clients ORDER BY display_name ASC"
+        async with db.execute(query) as cursor:
+            rows = await cursor.fetchall()
+            clients = []
+            for row in rows:
+                row['is_active'] = bool(row['is_active'])
+                clients.append(ClientProfile(**row))
+            return clients
+
+async def update_client(db_path: Path, client_id: str, **kwargs: Any) -> ClientProfile:
+    now = _now_iso()
+    updates = []
+    params = []
+    for k, v in kwargs.items():
+        if k in ['display_name', 'app_type', 'base_url', 'username', 'pod_identifier', 
+                 'consultant_initials', 'is_active', 'custom_wait_selectors', 'extra_headers', 'extra_cookies']:
+            updates.append(f"{k} = ?")
+            if k == 'is_active':
+                params.append(1 if v else 0)
+            else:
+                params.append(v)
+    if updates:
+        updates.append("updated_at = ?")
+        params.append(now)
+        params.append(client_id)
+        query = f"UPDATE clients SET {', '.join(updates)} WHERE id = ?"
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute(query, tuple(params))
+            await db.commit()
+    return await get_client(db_path, client_id)
+
+async def delete_client(db_path: Path, client_id: str) -> None:
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("DELETE FROM clients WHERE id = ?", (client_id,))
+        await db.commit()
+
+
+# --- LLM Providers CRUD ---
+
+async def create_llm_provider(db_path: Path, name: str, api_key_encrypted: Optional[str], model_name: str,
+                              base_url_override: Optional[str] = None, max_tokens: int = 4096,
+                              temperature: float = 0.7, is_active: bool = False) -> LLMProvider:
+    is_active_int = 1 if is_active else 0
+    async with aiosqlite.connect(db_path) as db:
+        if is_active:
+            await db.execute("UPDATE llm_providers SET is_active = 0")
+        await db.execute(
+            """INSERT INTO llm_providers (
+                name, api_key_encrypted, model_name, base_url_override, max_tokens, temperature, is_active
+               ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (name, api_key_encrypted, model_name, base_url_override, max_tokens, temperature, is_active_int)
+        )
+        await db.commit()
+    return await get_llm_provider(db_path, name)
+
+async def get_llm_provider(db_path: Path, name: str) -> LLMProvider:
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = _dict_factory
+        async with db.execute("SELECT * FROM llm_providers WHERE name = ?", (name,)) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                raise DatabaseError(f"LLM Provider not found: {name}")
+            row['is_active'] = bool(row['is_active'])
+            return LLMProvider(**row)
+
+async def get_active_llm_provider(db_path: Path) -> Optional[LLMProvider]:
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = _dict_factory
+        async with db.execute("SELECT * FROM llm_providers WHERE is_active = 1 LIMIT 1") as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            row['is_active'] = bool(row['is_active'])
+            return LLMProvider(**row)
+
+async def list_llm_providers(db_path: Path) -> List[LLMProvider]:
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = _dict_factory
+        async with db.execute("SELECT * FROM llm_providers ORDER BY name ASC") as cursor:
+            rows = await cursor.fetchall()
+            providers = []
+            for row in rows:
+                row['is_active'] = bool(row['is_active'])
+                providers.append(LLMProvider(**row))
+            return providers
+
+async def update_llm_provider(db_path: Path, name: str, **kwargs: Any) -> LLMProvider:
+    updates = []
+    params = []
+    is_active = kwargs.get('is_active')
+    async with aiosqlite.connect(db_path) as db:
+        if is_active:
+            await db.execute("UPDATE llm_providers SET is_active = 0 WHERE name != ?", (name,))
+        for k, v in kwargs.items():
+            if k in ['api_key_encrypted', 'model_name', 'base_url_override', 'max_tokens', 'temperature', 'is_active']:
+                updates.append(f"{k} = ?")
+                if k == 'is_active':
+                    params.append(1 if v else 0)
+                else:
+                    params.append(v)
+        if updates:
+            params.append(name)
+            query = f"UPDATE llm_providers SET {', '.join(updates)} WHERE name = ?"
+            await db.execute(query, tuple(params))
+            await db.commit()
+    return await get_llm_provider(db_path, name)
+
+async def delete_llm_provider(db_path: Path, name: str) -> None:
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("DELETE FROM llm_providers WHERE name = ?", (name,))
+        await db.commit()
+
+
+# --- Master Password Verification CRUD ---
+
+async def get_master_password_verify(db_path: Path) -> Optional[Dict[str, str]]:
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = _dict_factory
+        async with db.execute("SELECT * FROM master_password_verify LIMIT 1") as cursor:
+            return await cursor.fetchone()
+
+async def set_master_password_verify(db_path: Path, salt: str, verifier: str) -> None:
+    now = _now_iso()
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("DELETE FROM master_password_verify")
+        await db.execute(
+            "INSERT INTO master_password_verify (salt, verifier, created_at) VALUES (?, ?, ?)",
+            (salt, verifier, now)
+        )
+        await db.commit()
+
 

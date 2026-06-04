@@ -6,18 +6,33 @@
 {% block content %}
 <div class="page-header flex justify-between items-center mb-6">
     <h1 class="page-title">Tests</h1>
-    <a href="/tests/create" class="btn btn-primary">New Test</a>
+    <div class="flex gap-2">
+        <button onclick="triggerImportTest()" class="btn btn-secondary">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="display:inline; margin-right:4px; vertical-align:middle;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+            Import JSON
+        </button>
+        <input type="file" id="testImportFile" class="hidden" accept=".json" onchange="importTest(this)">
+        <a href="/tests/create" class="btn btn-primary">New Test</a>
+    </div>
 </div>
 
 <div class="card p-0">
-    <div class="card-header flex justify-between p-4 border-b border-strong">
+    <div class="card-header flex justify-between p-4 border-b border-strong items-center">
         <input type="text" id="search-tests" placeholder="Search tests..." class="input w-1/3">
+        <div class="flex gap-3 items-center hidden" id="bulk-actions">
+            <span class="text-xs text-secondary font-medium" id="selected-count">0 selected</span>
+            <button class="btn btn-secondary text-xs py-1.5 px-3" onclick="bulkExport()">Export Selected</button>
+            <button class="btn btn-danger text-xs py-1.5 px-3" onclick="bulkDelete()">Delete Selected</button>
+        </div>
     </div>
     
     {% if tests %}
     <table class="table" id="tests-table">
         <thead>
             <tr>
+                <th style="width: 40px; padding-left: 20px;">
+                    <input type="checkbox" id="select-all-tests" onchange="toggleSelectAllTests(this)">
+                </th>
                 <th>Name</th>
                 <th>Mode</th>
                 <th>URL</th>
@@ -29,6 +44,9 @@
         <tbody>
             {% for test in tests %}
             <tr data-test-id="{{ test.id }}">
+                <td style="padding-left: 20px;">
+                    <input type="checkbox" class="test-selector-checkbox" data-test-id="{{ test.id }}" onchange="updateBulkActionsBar()">
+                </td>
                 <td><strong>{{ test.name }}</strong></td>
                 <td><span class="badge badge-gray">{{ test.mode }}</span></td>
                 <td class="font-mono text-xs text-secondary truncate max-w-xs" title="{{ test.url }}">
@@ -40,6 +58,9 @@
                     <div class="flex gap-2">
                         <button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px;" onclick="openReplayModal('{{ test.id }}', '{{ test.name|escape }}')">Run</button>
                         <a href="/tests/{{ test.id }}" class="link" style="padding: 4px 8px;">View</a>
+                        <a href="/api/tests/{{ test.id }}/export" class="icon-btn text-accent p-1 rounded hover:bg-hover" title="Export Test JSON" download>
+                            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        </a>
                         <button class="icon-btn text-red p-1 rounded hover:bg-red-dim" onclick="confirmDelete('/api/tests/{{ test.id }}', '{{ test.name|escape }}', '/tests')">
                             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>
@@ -58,26 +79,148 @@
 
 <!-- Replay Modal -->
 <div id="replay-modal" class="modal hidden">
-    <div class="modal-content card max-w-md mx-auto mt-32 relative">
-        <h2 class="section-title mb-4">Run Test: <span id="rm-test-name" class="text-primary"></span></h2>
-        <div class="form-group mt-4">
-            <label class="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" id="rm-headless" checked class="form-checkbox">
-                <span>Headless (no UI)</span>
-            </label>
+    <div class="modal-content card max-w-lg mx-auto mt-24 relative">
+        <div class="flex justify-between items-start mb-5">
+            <div>
+                <h2 class="section-title m-0">Run Test</h2>
+                <p class="text-sm text-secondary mt-1">Running: <span id="rm-test-name" class="text-accent font-medium"></span></p>
+            </div>
+            <button class="icon-btn text-secondary hover:text-primary" onclick="document.getElementById('replay-modal').classList.add('hidden')">✕</button>
         </div>
-        <div class="form-group mb-6">
-            <label>Speed</label>
-            <select id="rm-speed" class="input w-full">
-                <option value="0">Fast (0ms)</option>
-                <option value="100" selected>Normal (100ms)</option>
-                <option value="500">Debug (500ms)</option>
-            </select>
+
+        <div class="space-y-4">
+            <div class="form-group">
+                <label for="rm-client">Client Profile</label>
+                <select id="rm-client" class="input w-full">
+                    <option value="">— Use global config (default) —</option>
+                    {% for client in clients %}
+                    <option value="{{ client.id }}">{{ client.display_name }} — {{ client.app_type }}</option>
+                    {% endfor %}
+                </select>
+                <p class="text-xs text-secondary mt-1">Select which environment this test runs against.</p>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label for="rm-speed">Execution Speed</label>
+                    <select id="rm-speed" class="input w-full">
+                        <option value="0">Fast (0ms delay)</option>
+                        <option value="100" selected>Normal (100ms)</option>
+                        <option value="300">Slow (300ms)</option>
+                        <option value="600">Debug (600ms)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label style="margin-bottom: 12px;">Browser Mode</label>
+                    <label class="flex items-center gap-2 cursor-pointer mt-2">
+                        <input type="checkbox" id="rm-headless" class="form-checkbox" style="width:auto;">
+                        <span class="text-sm">Headless (hidden)</span>
+                    </label>
+                    <p class="text-xs text-secondary mt-1">Uncheck to watch the run live.</p>
+                </div>
+            </div>
         </div>
-        <div class="flex justify-end gap-2 border-t border-strong pt-4">
+
+        <div class="flex justify-end gap-2 border-t border-strong pt-4 mt-5">
             <button class="btn btn-secondary" onclick="document.getElementById('replay-modal').classList.add('hidden')">Cancel</button>
-            <button class="btn btn-primary" id="rm-start" onclick="submitReplay()">Start Replay</button>
+            <button class="btn btn-primary" id="rm-start" onclick="submitReplay()">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="display:inline; margin-right:5px; vertical-align:middle;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
+                Start Run
+            </button>
         </div>
     </div>
 </div>
+
+
+<script>
+function triggerImportTest() {
+    document.getElementById('testImportFile').click();
+}
+async function importTest(input) {
+    if (!input.files.length) return;
+    const file = input.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+        const res = await fetch('/api/tests/import', {
+            method: 'POST',
+            body: formData
+        });
+        const result = await res.json();
+        if (res.ok && result.status === 'success') {
+            showToast(result.message, 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } else {
+            throw new Error(result.detail || result.message || 'Import failed');
+        }
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        input.value = '';
+    }
+}
+
+function toggleSelectAllTests(masterCheckbox) {
+    const checkboxes = document.querySelectorAll('.test-selector-checkbox');
+    checkboxes.forEach(cb => cb.checked = masterCheckbox.checked);
+    updateBulkActionsBar();
+}
+
+function updateBulkActionsBar() {
+    const checkboxes = document.querySelectorAll('.test-selector-checkbox:checked');
+    const bar = document.getElementById('bulk-actions');
+    const countEl = document.getElementById('selected-count');
+    const selectAllCheckbox = document.getElementById('select-all-tests');
+    const totalCheckboxes = document.querySelectorAll('.test-selector-checkbox');
+    
+    if (checkboxes.length > 0) {
+        bar.classList.remove('hidden');
+        countEl.textContent = `${checkboxes.length} selected`;
+    } else {
+        bar.classList.add('hidden');
+    }
+    
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = (checkboxes.length === totalCheckboxes.length && totalCheckboxes.length > 0);
+    }
+}
+
+function getSelectedTestIds() {
+    const checkboxes = document.querySelectorAll('.test-selector-checkbox:checked');
+    return Array.from(checkboxes).map(cb => cb.dataset.testId);
+}
+
+async function bulkDelete() {
+    const ids = getSelectedTestIds();
+    if (!ids.length) return;
+    if (!confirm(`Are you sure you want to delete all ${ids.length} selected tests? This action cannot be undone.`)) return;
+    
+    let successCount = 0;
+    for (const id of ids) {
+        try {
+            const res = await fetch(`/api/tests/${id}`, { method: 'DELETE' });
+            if (res.ok) successCount++;
+        } catch (e) {
+            console.error(`Failed to delete test ${id}:`, e);
+        }
+    }
+    showToast(`Successfully deleted ${successCount} tests`, 'success');
+    setTimeout(() => window.location.reload(), 1000);
+}
+
+async function bulkExport() {
+    const ids = getSelectedTestIds();
+    if (!ids.length) return;
+    
+    for (const id of ids) {
+        const a = document.createElement('a');
+        a.href = `/api/tests/${id}/export`;
+        a.download = `test_export_${id}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        await new Promise(r => setTimeout(r, 200));
+    }
+}
+</script>
 {% endblock %}

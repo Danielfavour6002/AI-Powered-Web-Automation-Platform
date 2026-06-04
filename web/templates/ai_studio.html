@@ -6,7 +6,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="max-w-4xl">
+<div class="max-w-6xl" style="margin: 0 auto;">
     <div class="page-header mb-8">
         <h1 class="page-title text-3xl mb-3 flex items-center gap-3">
             <svg width="28" height="28" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="text-accent pulse"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
@@ -20,23 +20,39 @@
             <h2 class="section-title">Generation Settings</h2>
             
             <form id="ai-gen-form" onsubmit="generateTest(event)">
+                {% if active_provider and vault_unlocked %}
+                <div class="p-3 mb-4 flex items-center gap-2" style="background: rgba(0, 245, 212, 0.05); border: 1px solid rgba(0, 245, 212, 0.15); color: var(--green); border-radius: var(--radius-sm); font-size: 12px;">
+                    <span style="font-size: 14px;">🔒</span>
+                    <span>Secure Vault: pre-configured active LLM provider <strong>{{ active_provider.name }}</strong> ({{ active_provider.model_name }}) key is unlocked.</span>
+                </div>
+                {% endif %}
+
+                <div class="form-group">
+                    <label for="client_id">Client Profile (Optional)</label>
+                    <select id="client_id" name="client_id" class="input" onchange="updateClientDefaults(this)">
+                        <option value="">— Select Client (Default URL & Credentials) —</option>
+                        {% for client in clients %}
+                        <option value="{{ client.id }}" data-url="{{ client.base_url }}">{{ client.display_name }} ({{ client.app_type }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
                 <div class="form-group">
                     <label for="provider">LLM Provider</label>
                     <select id="provider" name="provider" class="input">
-                        <option value="gemini">Google Gemini</option>
-                        <option value="openai">OpenAI (ChatGPT)</option>
-                        <option value="anthropic">Anthropic (Claude)</option>
-                        <option value="ollama">Ollama (Local)</option>
+                        <option value="gemini" {% if active_provider and active_provider.name == "gemini" %}selected{% endif %}>Google Gemini</option>
+                        <option value="openai" {% if active_provider and active_provider.name == "openai" %}selected{% endif %}>OpenAI (ChatGPT)</option>
+                        <option value="anthropic" {% if active_provider and active_provider.name == "anthropic" %}selected{% endif %}>Anthropic (Claude)</option>
                     </select>
                 </div>
                 
                 <div class="form-group">
-                    <label for="api_key">API Key (Securely passed, not stored)</label>
-                    <input type="password" id="api_key" name="api_key" class="input" placeholder="Enter your API key..." required>
+                    <label for="api_key">API Key</label>
+                    <input type="password" id="api_key" name="api_key" class="input" placeholder="{% if active_provider and vault_unlocked %}Vault unlocked — API Key loaded from Settings{% else %}Enter your API key...{% endif %}" {% if not (active_provider and vault_unlocked) %}required{% endif %}>
                 </div>
                 
                 <div class="form-group mt-6">
-                    <label for="test_file">Upload Test Cases (CSV, XLSX, TXT)</label>
+                    <label for="test_file">Upload Test Cases (CSV, XLSX, TXT, Max 10MB)</label>
                     <div class="border-2 border-dashed border-strong rounded-lg p-8 text-center bg-elevated hover:bg-hover transition-colors cursor-pointer" onclick="document.getElementById('test_file').click()">
                         <svg width="32" height="32" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="mx-auto mb-3 text-secondary"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
                         <span class="text-secondary text-sm font-medium">Click to upload or drag & drop</span>
@@ -45,23 +61,28 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4 mt-6">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem;">
                     <div class="form-group">
                         <label for="test_name">Test Name</label>
-                        <input type="text" id="test_name" name="test_name" class="input w-full" placeholder="e.g. Generated Location Test">
+                        <input type="text" id="test_name" name="test_name" class="input w-full" placeholder="e.g. Generated Location Test" required>
                     </div>
                     <div class="form-group">
                         <label for="test_url">Target URL</label>
-                        <input type="url" id="test_url" name="test_url" class="input w-full" placeholder="https://...">
+                        <input type="url" id="test_url" name="test_url" class="input w-full" placeholder="https://..." required>
                     </div>
                 </div>
 
+                <div class="form-group">
+                    <label for="test_description">Description (Optional)</label>
+                    <input type="text" id="test_description" name="test_description" class="input w-full" placeholder="e.g. Verifies new location creation step-by-step">
+                </div>
+
                 <div class="flex justify-end mt-8 gap-3">
-                    <button type="submit" class="btn btn-secondary flex-1" id="gen-btn">
+                    <button type="submit" class="btn btn-secondary" style="flex: 1;" id="gen-btn">
                         <span>Translate to NLP</span>
                     </button>
-                    <button type="button" class="btn btn-primary flex-1" id="record-btn" onclick="startSmartRecording()">
-                        <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="mr-1"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                    <button type="button" class="btn btn-primary" style="flex: 1;" id="record-btn" onclick="startSmartRecording()">
+                        <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
                         <span>Generate & Record (Agent)</span>
                     </button>
                 </div>
@@ -70,18 +91,39 @@
 
         <div class="card p-0 flex flex-col">
             <div class="p-5 border-b border-strong flex justify-between items-center">
-                <h2 class="section-title mb-0">Generated Code Preview</h2>
+                <h2 class="section-title mb-0" id="preview-title">Generated Code Preview</h2>
                 <div class="flex gap-2">
                     <button class="btn btn-secondary text-xs py-1 px-3 hidden" id="save-btn" onclick="saveGeneratedTest()">Save to test.json</button>
                     <button class="btn btn-primary text-xs py-1 px-3 hidden" id="create-test-btn" onclick="createTestFromAI()">Create Test in Dashboard</button>
                 </div>
             </div>
-            <div class="bg-base flex-1 p-5 font-mono text-sm overflow-auto text-primary relative" id="code-preview">
+            
+            <!-- Code Preview Block -->
+            <div class="bg-base flex-1 p-5 font-mono text-sm overflow-auto text-primary relative" id="code-preview" style="height: 380px;">
                 <div class="absolute inset-0 flex flex-col items-center justify-center text-secondary opacity-50" id="preview-empty">
                     <svg width="48" height="48" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="mb-3"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
                     <span>Code will appear here</span>
                 </div>
                 <pre><code id="code-content" class="hidden"></code></pre>
+            </div>
+            
+            <!-- Live Agent Monitor Container -->
+            <div class="bg-base flex-1 p-5 hidden flex flex-col" id="agent-monitor" style="height: 380px; overflow-y: auto;">
+                <div class="flex items-center justify-between mb-4 border-b border-strong pb-3">
+                    <div class="flex items-center gap-2">
+                        <span class="dot bg-green pulse" id="agent-monitor-dot"></span>
+                        <span class="font-semibold" id="agent-monitor-status" style="font-size: 13px;">Agent Starting...</span>
+                    </div>
+                    <button id="agent-resume-btn" class="btn btn-primary text-xs py-1 px-3 hidden" onclick="triggerAgentResume()">Resume Agent</button>
+                </div>
+                
+                <div class="flex flex-col gap-4">
+                    <img id="agent-screenshot" class="screenshot-thumb w-full h-auto" src="" style="max-height: 200px; display: none; object-fit: contain; border: 1px solid var(--border-strong);">
+                    
+                    <div class="bg-elevated p-4 font-mono text-xs overflow-y-auto rounded-lg border border-strong" style="max-height: 200px; height: 200px;" id="agent-logs-container">
+                        <div class="text-secondary">[System] Initializing autonomous log stream...</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -91,6 +133,16 @@
     function updateFileName(input) {
         if (input.files.length > 0) {
             document.getElementById('file-name').innerText = "Selected: " + input.files[0].name;
+        }
+    }
+
+    function updateClientDefaults(select) {
+        const option = select.options[select.selectedIndex];
+        if (option && option.value) {
+            const url = option.getAttribute('data-url');
+            if (url) {
+                document.getElementById('test_url').value = url;
+            }
         }
     }
 
@@ -109,6 +161,11 @@
         previewEmpty.classList.remove('hidden');
         codeContent.classList.add('hidden');
         saveBtn.classList.add('hidden');
+        
+        // Ensure Code Preview is shown, monitor is hidden
+        document.getElementById('code-preview').classList.remove('hidden');
+        document.getElementById('agent-monitor').classList.add('hidden');
+        document.getElementById('preview-title').textContent = "Generated Code Preview";
         
         try {
             const response = await fetch('/ai/generate', {
@@ -130,23 +187,12 @@
                 document.getElementById('create-test-btn').classList.remove('hidden');
                 
                 window.generatedInstructions = result.instructions;
-                
-                // Show toast
-                const toast = document.createElement('div');
-                toast.className = 'toast toast-success';
-                toast.innerHTML = '<svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Test generated successfully!';
-                document.getElementById('toast-container').appendChild(toast);
-                setTimeout(() => toast.remove(), 4000);
-                
+                showToast("Test steps generated successfully!", "success");
             } else {
                 throw new Error(result.message || 'Generation failed');
             }
         } catch (error) {
-            const toast = document.createElement('div');
-            toast.className = 'toast toast-error';
-            toast.innerHTML = '<svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> ' + error.message;
-            document.getElementById('toast-container').appendChild(toast);
-            setTimeout(() => toast.remove(), 5000);
+            showToast(error.message, "error");
         } finally {
             btn.disabled = false;
             btn.innerHTML = '<span>Translate to NLP</span>';
@@ -156,7 +202,6 @@
     async function saveGeneratedTest() {
         if (!window.generatedInstructions) return;
         
-        // Quick way to download the file directly in browser
         const blob = new Blob([JSON.stringify(window.generatedInstructions, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -190,20 +235,13 @@
             });
             const data = await res.json();
             if(res.ok && data.status === "success") {
-                const toast = document.createElement('div');
-                toast.className = 'toast toast-success';
-                toast.innerHTML = '<svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Test created! Redirecting...';
-                document.getElementById('toast-container').appendChild(toast);
-                
+                showToast("Test created! Redirecting to dashboard...", "success");
                 setTimeout(() => window.location.href = "/tests/" + data.test_id, 1500);
             } else {
                 throw new Error(data.message);
             }
         } catch (e) {
-            const toast = document.createElement('div');
-            toast.className = 'toast toast-error';
-            toast.innerHTML = '<svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> ' + e.message;
-            document.getElementById('toast-container').appendChild(toast);
+            showToast(e.message, "error");
             btn.disabled = false;
             btn.innerHTML = 'Create Test in Dashboard';
         }
@@ -214,16 +252,32 @@
         const formData = new FormData(form);
         const btn = document.getElementById('record-btn');
         const testUrl = document.getElementById('test_url').value;
+        const testName = document.getElementById('test_name').value;
         const apiKey = document.getElementById('api_key').value;
         const fileInput = document.getElementById('test_file');
 
-        if (!testUrl || !apiKey || !fileInput.files.length) {
-            alert("API Key, Target URL, and File are required for Autonomous Recording.");
+        const activeProviderName = "{{ active_provider.name if active_provider else '' }}";
+        const vaultUnlocked = {{ 'true' if vault_unlocked else 'false' }};
+        const selectedProvider = document.getElementById('provider').value;
+        const isKeyOptional = vaultUnlocked && (selectedProvider === activeProviderName);
+
+        if (!testUrl || !testName || (!apiKey && !isKeyOptional) || !fileInput.files.length) {
+            showToast("Test Name, Target URL, File, and API Key (if not configured in Settings) are required for Autonomous Recording.", "error");
             return;
         }
 
         btn.disabled = true;
-        btn.innerHTML = '<div class="spinner"></div> <span>Running Agent in Background...</span>';
+        btn.innerHTML = '<div class="spinner"></div> <span>Spawning Agent...</span>';
+        
+        // Hide Code Preview, show Live Monitor
+        document.getElementById('code-preview').classList.add('hidden');
+        document.getElementById('agent-monitor').classList.remove('hidden');
+        document.getElementById('preview-title').textContent = "Live AI Agent Monitor";
+        
+        const logsContainer = document.getElementById('agent-logs-container');
+        logsContainer.innerHTML = '<div class="text-secondary">[System] Connecting to agent stream...</div>';
+        document.getElementById('agent-screenshot').style.display = 'none';
+        document.getElementById('agent-resume-btn').classList.add('hidden');
         
         try {
             const response = await fetch('/ai/record-test', {
@@ -233,40 +287,162 @@
             const result = await response.json();
             
             if (response.ok && result.status === 'success') {
-                const toast = document.createElement('div');
-                toast.className = 'toast toast-success';
-                toast.innerHTML = 'Agent spawned! Monitoring job...';
-                document.getElementById('toast-container').appendChild(toast);
+                showToast("Agent spawned successfully!", "success");
                 
-                pollJobStatus(result.job_id, btn);
+                const runId = result.run_id;
+                const testId = result.test_id;
+                window.currentRunId = runId;
+                
+                // Initialize EventSource for SSE Stream
+                const sse = new EventSource(`/ai/agent-stream/${runId}`);
+                
+                sse.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'ping') return;
+                    
+                    // Handle logs
+                    if (data.type === 'log') {
+                        const logLine = document.createElement('div');
+                        logLine.className = 'py-1 border-b border-light';
+                        logLine.textContent = `[Log] ${data.message}`;
+                        logsContainer.appendChild(logLine);
+                        logsContainer.scrollTop = logsContainer.scrollHeight;
+                        
+                        // Show screenshot if provided
+                        if (data.screenshot) {
+                            const img = document.getElementById('agent-screenshot');
+                            img.src = data.screenshot;
+                            img.style.display = 'block';
+                        }
+                    }
+                    else if (data.type === 'status') {
+                        document.getElementById('agent-monitor-status').textContent = `Agent: ${data.status.toUpperCase()} - ${data.message}`;
+                        const dot = document.getElementById('agent-monitor-dot');
+                        
+                        if (data.status === 'stalled') {
+                            dot.className = 'dot bg-red pulse';
+                            document.getElementById('agent-resume-btn').classList.remove('hidden');
+                            if (data.screenshot) {
+                                const img = document.getElementById('agent-screenshot');
+                                img.src = data.screenshot;
+                                img.style.display = 'block';
+                            }
+                        } else if (data.status === 'running') {
+                            dot.className = 'dot bg-green pulse';
+                            document.getElementById('agent-resume-btn').classList.add('hidden');
+                        } else if (data.status === 'paused') {
+                            dot.className = 'dot bg-blue pulse';
+                        }
+                    }
+                    else if (data.type === 'step_start') {
+                        const stepLine = document.createElement('div');
+                        stepLine.className = 'py-1 font-semibold text-accent';
+                        stepLine.textContent = `[Step ${data.sequence}] ${data.description}`;
+                        logsContainer.appendChild(stepLine);
+                        logsContainer.scrollTop = logsContainer.scrollHeight;
+                    }
+                    else if (data.type === 'step_success') {
+                        const stepLine = document.createElement('div');
+                        stepLine.className = 'py-1 text-green';
+                        stepLine.textContent = `✓ Step ${data.sequence} completed successfully`;
+                        logsContainer.appendChild(stepLine);
+                        logsContainer.scrollTop = logsContainer.scrollHeight;
+                    }
+                    else if (data.type === 'step_fail') {
+                        const stepLine = document.createElement('div');
+                        stepLine.className = 'py-1 text-red';
+                        stepLine.textContent = `✕ Step ${data.sequence} failed!`;
+                        logsContainer.appendChild(stepLine);
+                        logsContainer.scrollTop = logsContainer.scrollHeight;
+                    }
+                    else if (data.type === 'done') {
+                        sse.close();
+                        const doneLine = document.createElement('div');
+                        doneLine.className = data.status === 'passed' ? 'py-2 font-bold text-green' : 'py-2 font-bold text-red';
+                        doneLine.textContent = `[Agent Finished] Final Status: ${data.status.toUpperCase()}. ${data.message}`;
+                        logsContainer.appendChild(doneLine);
+                        logsContainer.scrollTop = logsContainer.scrollHeight;
+                        
+                        document.getElementById('agent-monitor-dot').className = data.status === 'passed' ? 'dot bg-green' : 'dot bg-red';
+                        
+                        if (data.status === 'passed') {
+                            showToast("Autonomous run completed successfully!", "success");
+                            setTimeout(() => {
+                                window.location.href = `/tests/${testId}`;
+                            }, 3000);
+                        } else {
+                            showToast("Autonomous run failed", "error");
+                            btn.disabled = false;
+                            btn.innerHTML = '<span>Generate & Record (Agent)</span>';
+                        }
+                    }
+                    else if (data.type === 'error') {
+                        sse.close();
+                        const errLine = document.createElement('div');
+                        errLine.className = 'py-2 font-bold text-red';
+                        errLine.textContent = `[Error] ${data.message}`;
+                        logsContainer.appendChild(errLine);
+                        logsContainer.scrollTop = logsContainer.scrollHeight;
+                        
+                        document.getElementById('agent-monitor-dot').className = 'dot bg-red';
+                        btn.disabled = false;
+                        btn.innerHTML = '<span>Generate & Record (Agent)</span>';
+                    }
+                };
+                
+                sse.onerror = function() {
+                    sse.close();
+                    const errLine = document.createElement('div');
+                    errLine.className = 'py-2 text-red font-semibold';
+                    errLine.textContent = '[System Error] SSE connection lost.';
+                    logsContainer.appendChild(errLine);
+                    btn.disabled = false;
+                    btn.innerHTML = '<span>Generate & Record (Agent)</span>';
+                };
             } else {
                 throw new Error(result.message || 'Failed to start job');
             }
         } catch (e) {
-            alert(e.message);
+            showToast(e.message, "error");
             btn.disabled = false;
             btn.innerHTML = '<span>Generate & Record (Agent)</span>';
         }
     }
 
-    async function pollJobStatus(jobId, btn) {
+    async function triggerAgentResume() {
+        if (!window.currentRunId) return;
         try {
-            const res = await fetch(`/ai/job/${jobId}`);
-            const data = await res.json();
-            
-            if (data.status === 'running') {
-                setTimeout(() => pollJobStatus(jobId, btn), 2000);
-            } else if (data.status === 'success') {
-                btn.innerHTML = '<span>Success! Redirecting...</span>';
-                window.location.href = "/tests/" + data.test_id;
+            const res = await fetch(`/ai/agent-resume/${window.currentRunId}`, { method: 'POST' });
+            if (res.ok) {
+                document.getElementById('agent-resume-btn').classList.add('hidden');
+                showToast("Resume command sent to agent", "success");
             } else {
-                throw new Error(data.error || 'Job failed');
+                showToast("Failed to send resume signal", "error");
             }
         } catch (e) {
-            alert("Agent failed: " + e.message);
-            btn.disabled = false;
-            btn.innerHTML = '<span>Generate & Record (Agent)</span>';
+            showToast(e.message, "error");
         }
     }
+
+    // Dynamic API Key validation toggles based on active settings
+    (function() {
+        const providerSelect = document.getElementById('provider');
+        const apiKeyInput = document.getElementById('api_key');
+        const activeProviderName = "{{ active_provider.name if active_provider else '' }}";
+        const vaultUnlocked = {{ 'true' if vault_unlocked else 'false' }};
+
+        if (providerSelect && apiKeyInput) {
+            providerSelect.addEventListener('change', () => {
+                if (vaultUnlocked && providerSelect.value === activeProviderName) {
+                    apiKeyInput.required = false;
+                    apiKeyInput.placeholder = "Vault unlocked — API Key loaded from Settings";
+                } else {
+                    apiKeyInput.required = true;
+                    apiKeyInput.placeholder = "Enter your API key...";
+                }
+            });
+        }
+    })();
 </script>
 {% endblock %}

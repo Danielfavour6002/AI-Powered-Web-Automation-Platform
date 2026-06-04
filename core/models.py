@@ -86,6 +86,9 @@ class Run:
     step_count: int = 0
     passed_count: int = 0
     failed_count: int = 0
+    client_id: Optional[str] = None
+    run_params: Optional[str] = None
+
 
 
 @dataclass
@@ -129,4 +132,35 @@ class Environment:
     password_env_var: str
     created_at: str
     updated_at: str
+
+
+@dataclass
+class ClientProfile:
+    """Client profile configuration entity."""
+    id: str
+    display_name: str
+    app_type: str
+    base_url: str
+    username: str
+    pod_identifier: Optional[str] = None
+    consultant_initials: Optional[str] = None
+    is_active: bool = True
+    custom_wait_selectors: Optional[str] = None
+    extra_headers: Optional[str] = None
+    extra_cookies: Optional[str] = None
+    created_at: str = ""
+    updated_at: str = ""
+
+
+@dataclass
+class LLMProvider:
+    """LLM provider configuration entity."""
+    name: str
+    api_key_encrypted: Optional[str] = None
+    model_name: str = ""
+    base_url_override: Optional[str] = None
+    max_tokens: int = 4096
+    temperature: float = 0.7
+    is_active: bool = False
+
 

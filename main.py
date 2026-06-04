@@ -6,12 +6,15 @@ import sys
 import uvicorn
 from pathlib import Path
 import uuid
+from typing import Optional
 
-from core.config import load_config, resolve_password
+from core.config import load_config
 from core.database import init_db, create_test, create_step
 from core.logging import configure_logging, get_logger
 from engine.runner import run_test
 from reports.excel_importer import list_excel_scenarios, import_excel_steps
+from core.security import get_client_password
+import json
 
 def serve() -> None:
     """Start the FastAPI server."""
@@ -43,40 +46,62 @@ def do_init() -> None:
     asyncio.run(init_db(Path(config.db_path)))
     print("Database initialized. QA Platform ready.")
 
-def run_scenario(test_id: str, headless: bool, slow_mo: int) -> None:
-    """Run a scenario directly from CLI."""
+def run_scenario(test_id: str, headless: bool, slow_mo: int, run_id: Optional[str] = None) -> None:
+    """Run a scenario directly from CLI, resolving client profiles dynamically if run_id is provided."""
     env_path = Path(".env")
     config = load_config(env_path)
     configure_logging(Path(config.output_root))
     logger = get_logger()
     
-    password = resolve_password(config)
-    run_id = uuid.uuid4().hex
-    
-    # We need to create a Run in DB first, but `run_test` expects the Run to already exist in some flows.
-    # Actually, the API does create_run before run_test. Let's do that here too.
+    db_path = Path(config.db_path)
     import core.database as db
-    async def _setup_run():
-        test = await db.get_test(Path(config.db_path), test_id)
-        return await db.create_run(Path(config.db_path), test.id, test.name, config.consultant, config.fusion_pod)
-        
+    
+    client_profile = None
+    run_params = {}
+    from core.config import resolve_password
+    password = resolve_password(config)
+    
+    async def _setup():
+        nonlocal run_id, client_profile, run_params, password
+        if run_id:
+            # Load existing run record from database
+            run_rec = await db.get_run(db_path, run_id)
+            if run_rec.client_id:
+                client_profile = await db.get_client(db_path, run_rec.client_id)
+                client_pass = get_client_password(run_rec.client_id)
+                if client_pass:
+                    password = client_pass
+            if run_rec.run_params:
+                try:
+                    run_params = json.loads(run_rec.run_params)
+                except Exception:
+                    run_params = {}
+        else:
+            # Fallback to bootstrap .env
+            run_id = uuid.uuid4().hex
+            test = await db.get_test(db_path, test_id)
+            await db.create_run(db_path, test.id, test.name, config.consultant, config.fusion_pod)
+            
     try:
-        run = asyncio.run(_setup_run())
+        asyncio.run(_setup())
     except Exception as e:
-        logger.error(f"Failed to setup run: {e}")
+        logger.error(f"Failed to setup run execution: {e}")
         sys.exit(1)
         
-    print(f"Starting test {test_id} (run {run.id})")
-    status = run_test(
-        run_id=run.id,
+    print(f"Starting test {test_id} (run {run_id})")
+    
+    status = asyncio.run(run_test(
+        run_id=run_id,
         test_id=test_id,
         config=config,
         password=password,
-        db_path=Path(config.db_path),
+        db_path=db_path,
         output_root=Path(config.output_root),
         headless=headless,
-        slow_mo=slow_mo
-    )
+        slow_mo=slow_mo,
+        client_profile=client_profile,
+        run_params=run_params
+    ))
     print(f"Run completed with status: {status}")
 
 def import_excel(file_path: str) -> None:
@@ -137,6 +162,7 @@ def main() -> None:
     # run
     run_parser = subparsers.add_parser("run", help="Run a test scenario")
     run_parser.add_argument("--test", required=True, help="Test ID to run")
+    run_parser.add_argument("--run-id", help="Optional existing Run ID to execute")
     run_parser.add_argument("--headless", action="store_true", help="Run in headless mode")
     run_parser.add_argument("--slow-mo", type=int, default=100, help="Slow down execution by ms")
     
@@ -151,7 +177,7 @@ def main() -> None:
     elif args.command == "init":
         do_init()
     elif args.command == "run":
-        run_scenario(args.test, args.headless, args.slow_mo)
+        run_scenario(args.test, args.headless, args.slow_mo, args.run_id)
     elif args.command == "import":
         import_excel(args.file)
     else:

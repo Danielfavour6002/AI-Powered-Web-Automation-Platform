@@ -167,20 +167,84 @@
     </div>
 
     <div class="mb-12">
-        <h3 class="text-sm font-medium text-secondary uppercase tracking-wider mb-4 pl-1">Generate Reports</h3>
-        <div class="flex flex-wrap gap-3">
-            <button class="btn btn-secondary flex items-center gap-2" onclick="generateReport('{{ run.id }}', 'excel')">
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="text-green"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                Download Excel
-            </button>
-            <button class="btn btn-secondary flex items-center gap-2" onclick="generateReport('{{ run.id }}', 'docx')">
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="text-blue"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                Download DOCX
-            </button>
-            <button class="btn btn-secondary flex items-center gap-2" onclick="generateReport('{{ run.id }}', 'allure')">
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="text-amber"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
-                View Allure
-            </button>
+        <h3 class="section-title mb-4">Execution Reports & Deliverables</h3>
+        <p class="text-secondary text-sm mb-6">Select a report format below to view or export the test execution findings. Each format is dynamically generated for a specific reporting channel.</p>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem;">
+            <!-- Excel Card -->
+            <div class="card p-5 flex flex-col justify-between" style="border-top: 3px solid var(--green);">
+                <div>
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="badge badge-green">Executive Summary</span>
+                        <h4 class="font-semibold text-primary" style="font-size: 15px;">Excel Workbook</h4>
+                    </div>
+                    <p class="text-secondary text-xs mb-4" style="line-height: 1.5;">Color-coded sheets detailing step execution log, duration statistics, client metadata, and high-resolution screenshots embedded directly inside sheet cells.</p>
+                </div>
+                <button class="btn btn-secondary text-xs w-full py-2 flex items-center justify-center gap-2" onclick="generateReport('{{ run.id }}', 'excel')">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="text-green" style="color: var(--green);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    Download Excel
+                </button>
+            </div>
+
+            <!-- HTML Card -->
+            <div class="card p-5 flex flex-col justify-between" style="border-top: 3px solid var(--accent);">
+                <div>
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="badge badge-blue">Portable File</span>
+                        <h4 class="font-semibold text-primary" style="font-size: 15px;">HTML Report</h4>
+                    </div>
+                    <p class="text-secondary text-xs mb-4" style="line-height: 1.5;">A single, completely portable and self-contained HTML page containing full action logs, metadata tags, and screenshots encoded inline as Base64 data URIs.</p>
+                </div>
+                <button class="btn btn-secondary text-xs w-full py-2 flex items-center justify-center gap-2" onclick="generateReport('{{ run.id }}', 'html')">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="text-accent" style="color: var(--accent);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                    Download HTML Report
+                </button>
+            </div>
+
+            <!-- DOCX Card -->
+            <div class="card p-5 flex flex-col justify-between" style="border-top: 3px solid var(--primary);">
+                <div>
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="badge badge-gray">Word Document</span>
+                        <h4 class="font-semibold text-primary" style="font-size: 15px;">Formal Document</h4>
+                    </div>
+                    <p class="text-secondary text-xs mb-4" style="line-height: 1.5;">An elegant Word document featuring execution summaries and color-themed logs. Ideal for copy-pasting directly into sprint emails or status slide decks.</p>
+                </div>
+                <button class="btn btn-secondary text-xs w-full py-2 flex items-center justify-center gap-2" onclick="generateReport('{{ run.id }}', 'docx')">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="text-blue" style="opacity: 0.7;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    Download DOCX
+                </button>
+            </div>
+
+            <!-- ZIP Package Card -->
+            <div class="card p-5 flex flex-col justify-between" style="border-top: 3px solid var(--blue);">
+                <div>
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="badge badge-blue">Full Package</span>
+                        <h4 class="font-semibold text-primary" style="font-size: 15px;">Delivery ZIP Package</h4>
+                    </div>
+                    <p class="text-secondary text-xs mb-4" style="line-height: 1.5;">The ultimate deliverable package. Bundles the Excel sheet, self-contained HTML log, screenshots, session video records, and run manifests into a structured ZIP file.</p>
+                </div>
+                <button class="btn btn-secondary text-xs w-full py-2 flex items-center justify-center gap-2" onclick="generateReport('{{ run.id }}', 'zip')">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="text-blue" style="color: var(--blue);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                    Download Delivery ZIP
+                </button>
+            </div>
+
+            <!-- Allure Card -->
+            <div class="card p-5 flex flex-col justify-between" style="border-top: 3px solid var(--amber);">
+                <div>
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="badge badge-amber">Interactive Suite</span>
+                        <h4 class="font-semibold text-primary" style="font-size: 15px;">Allure Visual Suite</h4>
+                    </div>
+                    <p class="text-secondary text-xs mb-4" style="line-height: 1.5;">An interactive and analytical test-execution suite complete with analytical timelines, trend graphs, behaviors charts, and deep test case logs.</p>
+                </div>
+                <button class="btn btn-secondary text-xs w-full py-2 flex items-center justify-center gap-2" onclick="generateReport('{{ run.id }}', 'allure')">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="text-amber" style="color: var(--amber);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                    View Allure Reports
+                </button>
+            </div>
         </div>
     </div>
 </div>

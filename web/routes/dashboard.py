@@ -13,14 +13,26 @@ async def get_dashboard(request: Request) -> Any:
     """Render dashboard home."""
     db_path = request.app.state.db_path
     stats = await database.get_dashboard_stats(db_path)
-    return request.app.state.templates.TemplateResponse("dashboard.html", {"request": request, "stats": stats})
+    clients = await database.list_clients(db_path)
+    active_clients = [c for c in clients if c.is_active]
+    return request.app.state.templates.TemplateResponse("dashboard.html", {
+        "request": request,
+        "stats": stats,
+        "clients": active_clients
+    })
 
 @router.get("/tests", response_class=HTMLResponse)
 async def tests_list(request: Request) -> Any:
     """Render tests list."""
     db_path = request.app.state.db_path
     tests = await database.list_tests(db_path)
-    return request.app.state.templates.TemplateResponse("tests/list.html", {"request": request, "tests": tests})
+    clients = await database.list_clients(db_path)
+    active_clients = [c for c in clients if c.is_active]
+    return request.app.state.templates.TemplateResponse("tests/list.html", {
+        "request": request,
+        "tests": tests,
+        "clients": active_clients
+    })
 
 @router.get("/tests/create", response_class=HTMLResponse)
 async def tests_create(request: Request) -> Any:
@@ -78,4 +90,23 @@ async def settings_page(request: Request) -> Any:
     config = request.app.state.config
     db_path = request.app.state.db_path
     environments = await database.list_environments(db_path)
-    return request.app.state.templates.TemplateResponse("settings.html", {"request": request, "config": config, "environments": environments})
+    clients = await database.list_clients(db_path)
+    llm_providers = await database.list_llm_providers(db_path)
+    
+    # Check master password status
+    verify_info = await database.get_master_password_verify(db_path)
+    master_password_set = verify_info is not None
+    master_password_unlocked = hasattr(request.app.state, "master_key") and request.app.state.master_key is not None
+    
+    return request.app.state.templates.TemplateResponse(
+        "settings.html", 
+        {
+            "request": request, 
+            "config": config, 
+            "environments": environments,
+            "clients": clients,
+            "llm_providers": llm_providers,
+            "master_password_set": master_password_set,
+            "master_password_unlocked": master_password_unlocked
+        }
+    )

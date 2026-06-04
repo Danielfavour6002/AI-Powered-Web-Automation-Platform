@@ -8,6 +8,7 @@ loguru==0.7.2
 keyring==25.2.1
 openpyxl>=3.1.5
 python-docx==1.1.2
+Pillow>=10.3.0
 aiofiles==23.2.1
 litellm==1.40.15
 pandas>=2.2.3

@@ -1,7 +1,7 @@
 """Tests routes for QA Platform."""
 
 from typing import Any, Dict, List
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
 from core import database
@@ -157,4 +157,76 @@ async def update_single_step(request: Request, test_id: str, step_id: str, data:
         is_sensitive=sanitized["is_sensitive"]
     )
     return {"data": None, "message": "Step updated successfully"}
+
+
+@router.get("/tests/{id}/export")
+async def export_test_api(request: Request, id: str):
+    """Export a test and its steps as a JSON file response."""
+    db_path = request.app.state.db_path
+    try:
+        test = await database.get_test(db_path, id)
+        steps = await database.get_steps_for_test(db_path, id)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail="Test not found")
+        
+    test_dict = test.__dict__ if hasattr(test, "__dict__") else dict(test)
+    steps_list = [s.__dict__ if hasattr(s, "__dict__") else dict(s) for s in steps]
+    
+    test_dict.pop("id", None)
+    test_dict.pop("created_at", None)
+    test_dict.pop("updated_at", None)
+    for s in steps_list:
+        s.pop("id", None)
+        s.pop("test_id", None)
+        s.pop("created_at", None)
+        
+    export_data = {
+        "test": test_dict,
+        "steps": steps_list
+    }
+    
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        content=export_data,
+        headers={"Content-Disposition": f"attachment; filename=test_export_{id}.json"}
+    )
+
+
+@router.post("/tests/import")
+async def import_test_api(request: Request, file: UploadFile = File(...)):
+    """Import a test from an uploaded JSON file."""
+    db_path = request.app.state.db_path
+    content = await file.read()
+    import json
+    try:
+        data = json.loads(content)
+        test_data = data.get("test")
+        steps_data = data.get("steps", [])
+        
+        if not test_data:
+            raise ValueError("Missing 'test' property in export data")
+            
+        test = await database.create_test(
+            db_path,
+            name=test_data.get("name", "Imported Test"),
+            url=test_data.get("url", "http://localhost"),
+            mode=test_data.get("mode", "recorded"),
+            description=test_data.get("description", "Imported via JSON")
+        )
+        
+        for s in steps_data:
+            await database.create_step(
+                db_path,
+                test_id=test.id,
+                sequence=s.get("sequence", 1),
+                action=s.get("action", "navigate"),
+                selector=s.get("selector"),
+                value=s.get("value"),
+                description=s.get("description"),
+                is_sensitive=bool(s.get("is_sensitive", False))
+            )
+            
+        return {"status": "success", "test_id": test.id, "message": "Test imported successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse or import test: {str(e)}")
 
