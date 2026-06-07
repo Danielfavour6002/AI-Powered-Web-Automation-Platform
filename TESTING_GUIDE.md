@@ -80,3 +80,24 @@ If you are a QA tester tasked with testing **this QA tool itself**, run through 
 ### TC-06: UI/UX Redesign Validation
 - **Action:** Navigate through the Home, Tests, and Runs tabs. Hover over buttons and cards.
 - **Expected Result:** The new Glassmorphism UI renders correctly. Cards have blurred backgrounds, buttons have neon gradients with smooth hover animations, and the sidebar highlights active routes accurately.
+### 📚 Additional Feature Coverage
+
+#### 🔐 Master Password & Vault
+- Set a master password in **Settings → Security (Vault)**. It derives a 256‑bit AES key via PBKDF2‑SHA256 (600 k iterations). The vault encrypts LLM API keys, client credentials, and fallback secrets. Unlock the vault once per session.
+
+#### 🤖 LLM Provider Configuration
+- Choose Google Gemini, OpenAI, or Anthropic in **AI Studio**. Load the API key from the vault; the key is stored encrypted and decrypted only when needed.
+
+#### ⚙️ Execution Toggles (General Config)
+- Enable/disable Playwright traces, video capture, and step screenshots individually via **Settings → General Config**.
+
+#### 📊 Log Levels
+- Adjust logging detail (`DEBUG`, `INFO`, `WARNING`, `ERROR`) in the General Config panel.
+
+#### 🛡️ Dynamic Parameterization
+- Use `{{Date}}` or `{{Random}}` in step values for unique runtime strings.
+
+#### 🖥️ UI/UX Details
+- Glassmorphism design, neon gradient buttons, collapsible sidebar with persistent toggle, and flex‑box monitor panel.
+
+These items are also validated by the test cases above.

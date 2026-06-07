@@ -337,6 +337,10 @@ testcase/
 ---
 
 ## 🛡️ Security Notes
-* **Zero Plaintext Storage**: No client passwords or LLM API keys are stored in plaintext. They are encrypted using AES-256-GCM and decrypted strictly in memory when the vault is unlocked.
-* **Dynamic Parameterization**: Use double braces `{{Date}}` or `{{Random}}` in step values to automatically substitute unique runtime strings and avoid duplicate data errors.
-* **Sensitive Steps**: Steps marked `is_sensitive` are automatically redacted from execution logs and report screenshots.
+* **Zero Plaintext Storage**: No client passwords or LLM API keys are stored in plaintext. They are encrypted using AES‑256‑GCM and decrypted strictly in memory when the vault is unlocked.
+* **Master Password & Vault**: Set a master password in **Settings → Security (Vault)**. It derives a 256‑bit AES key via PBKDF2‑SHA256 (600 k iterations). The vault encrypts LLM API keys, client credentials, and fallback secrets. Unlock the vault once per session to access protected data.
+* **LLM Provider Configuration**: Choose Google Gemini, OpenAI, or Anthropic in **AI Studio**. Load the API key from the vault; the key is encrypted at rest and decrypted only when needed.
+* **Dynamic Parameterization**: Use double braces `{{Date}}` or `{{Random}}` in step values to auto‑substitute unique runtime strings and avoid duplicate data errors.
+* **Trace & Media Toggles**: Enable/disable Playwright traces, video capture, and step screenshots individually via **Settings → General Config**.
+* **Sensitive Steps Redaction**: Steps marked `is_sensitive` are automatically redacted from execution logs and report screenshots.
+* **Granular Log Levels**: Adjust logging detail (`DEBUG`, `INFO`, `WARNING`, `ERROR`) in the General Config panel.
