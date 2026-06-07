@@ -1,4 +1,177 @@
-<div align="center">
+# AI-Powered Web Automation Platform
+
+> **Note:** This repository is a customized version of an open‑source automation platform. It has been adapted and extended to meet the specific needs of the client while preserving the original architecture. The codebase is fully owned and maintained here.
+
+The platform enables AI‑driven test automation for Oracle Fusion Cloud, offering recording, replay, AI‑generated test scripts, and comprehensive reporting via a modern, responsive web dashboard.
+
+---
+
+
+# <h1>🔬 ████████</h1>
+<p><strong>AI-powered Test Automation for Oracle Fusion Cloud</strong></p>
+
+<p>
+  <img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white" />
+  <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" />
+  <img src="https://img.shields.io/badge/Playwright-45ba4b?style=for-the-badge&logo=playwright&logoColor=white" />
+  <img src="https://img.shields.io/badge/OpenAI-412991?style=for-the-badge&logo=openai&logoColor=white" />
+  <img src="https://img.shields.io/badge/Google_Gemini-4285F4?style=for-the-badge&logo=google-gemini&logoColor=white" />
+</p>
+
+Record browser sessions, replay them against Oracle Fusion Cloud, generate AI‑driven test scripts, and export beautiful reports, all from a modern, responsive web dashboard.
+
+---
+
+## ✨ What's New & Core Improvements
+
+Since the initial release, we have added several architectural, security, and user‑experience enhancements:
+
+### 🔒 1. Advanced Secure Vault (AES‑256‑GCM)
+- **Master Password Key Derivation** – Secure vault in **Settings → Security (Vault)**. The master password derives an encryption key using **PBKDF2‑SHA256 (600 k iterations)**.
+- **AES‑256‑GCM Encryption** – Client passwords and LLM API keys are encrypted at rest. The derived key lives only in memory during a session.
+
+### ⚙️ 2. Execution Toggles (General Config)
+- **Media & Trace Controls** – Toggle Playwright traces, video captures, and step screenshots **individually** via **Settings → General Config**.
+- **Granular Log Levels** – Choose logging detail (`DEBUG`, `INFO`, `WARNING`, `ERROR`).
+
+### 🤖 3. Intelligent Action Normalization (Auto‑Healing)
+- **Database CHECK Constraint Fixes** – Auto‑mapper normalizes synonyms like `"hover"`, `"open"`, `"type"` to SQLite‑valid fields (`"click"`, `"navigate"`, `"fill"`).
+- **On‑The‑Fly Healing** – Replays analyze a simplified DOM tree to locate correct elements, reducing brittleness from CSS/ID changes.
+
+### 🌐 4. Windows Compatibility (ProactorEventLoop Threading)
+- **Playwright Subprocess Fix** – Resolved `NotImplementedError` caused by uvicorn’s `SelectorEventLoop` spawning Playwright browsers.
+- **Dedicated Worker Threads** – Autonomous agent now runs a background thread with `asyncio.ProactorEventLoop`, streaming live logs to the main thread via thread‑safe SSE queues.
+
+### 💅 5. Responsive UI & Alignments
+- **Collapsible Sidebar** – Fixed bug where toggling hid the collapse button; the button now stays visible and centered.
+- **Monitor Alignment** – AI Studio Live Agent Monitor uses proper flexbox for clean vertical logs and screenshot overlays.
+- **Button Spacing** – Standardized icon spacing with flex `gap` to eliminate layout misalignment.
+
+---
+
+## What Can This Do?
+
+| Feature | Description |
+|---|---|
+| 🎥 **Record** | Capture manual browser clicks into a replayable test |
+| ▶️ **Replay** | Run recorded tests against Oracle Fusion Cloud automatically |
+| 🤖 **AI Studio** | Upload a manual test case file and let the AI generate and run the test |
+| 📊 **Reports** | Export beautiful Excel or self‑contained HTML reports with embedded screenshots |
+| 🛡️ **Credential Vault** | Securely encrypt client passwords and API keys with a master key |
+| 🌐 **Web Dashboard** | Manage everything from a modern dark‑mode UI |
+
+---
+
+## 📋 Prerequisites
+
+### 1. Python 3.11 or higher
+- Download from [python.org/downloads](https://www.python.org/downloads/)
+- Run the installer and **check “Add Python to PATH”**
+- Verify: `python --version`
+
+### 2. Git
+- Install from [git‑scm.com/downloads](https://git-scm.com/downloads)
+
+---
+
+## 🚀 Setup Instructions (Step by Step)
+
+### Step 1: Clone the Repository
+```bash
+git clone https://github.com/Danielfavour6002/AI-Powered-Web-Automation-Platform.git
+cd AI-Powered-Web-Automation-Platform
+```
+
+### Step 2: Create a Virtual Environment
+**On Windows:**
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+```
+**On macOS/Linux:**
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### Step 3: Install Dependencies
+```bash
+pip install -r requirements.txt
+playwright install chromium
+```
+
+### Step 4: Configure the Environment
+Copy the example env file and edit your values:
+```bash
+copy .env.example .env   # Windows
+# or
+cp .env.example .env   # macOS/Linux
+```
+- `FUSION_URL` – Oracle Fusion instance URL
+- `DB_PATH` – Path for local SQLite DB (default `data/qap.db`)
+- `OUTPUT_ROOT` – Directory for traces/videos (default `output`)
+
+### Step 5: Initialise the Database
+```bash
+python scripts/init_db.py
+```
+
+### Step 6: Run the Application
+```bash
+python main.py serve
+```
+Open **http://127.0.0.1:8001** in your browser.
+
+---
+
+## 📖 How to Use
+
+### 🎥 Recording a Test
+1. Click **“Quick Record”** in the top navigation bar.
+2. Enter the target URL and click **“Start Recording”**.
+3. Perform manual steps in the opened browser window.
+4. Click **“Stop Recording”** when finished.
+
+### ▶️ Replaying a Test
+1. Navigate to **Tests**, select a test, and click **“Run”**.
+2. Choose a **Client Profile** to run against a specific instance.
+3. Monitor progress on the **Runs** page.
+
+### 🤖 AI Studio (AI‑Powered Test Generation)
+1. Open **AI Studio** from the navigation bar.
+2. Select your LLM provider (Gemini, OpenAI, Anthropic) and load the API key from the vault.
+3. Upload a test case file (`.xlsx`, `.csv`, `.txt`) and click **“Translate to NLP”**.
+4. Press **“Generate & Record (Agent)”** to let the AI autonomously execute steps and record them.
+
+---
+
+## 📁 Project Structure
+```
+testcase/
+├─ core/                 # Core models, DB, config, security
+│   ├─ config.py
+│   ├─ database.py
+│   └─ security.py
+├─ engine/               # Test execution engine
+│   ├─ runner.py
+│   ├─ agent.py
+│   └─ llm.py
+├─ fusion/               # Oracle Fusion Cloud selectors & hooks
+├─ reports/              # Excel & HTML report generators
+├─ web/                  # Dashboard UI, templates, REST routes
+├─ scripts/              # Helper scripts (e.g., init_db.py)
+└─ main.py               # FastAPI entry point
+```
+---
+
+## 🛡️ Security Notes
+- **Zero Plaintext Storage** – All credentials are encrypted with AES‑256‑GCM and never stored in plaintext.
+- **Dynamic Parameterisation** – Use `{{Date}}` or `{{Random}}` in step values for unique runtime strings.
+- **Sensitive Steps** – Steps marked `is_sensitive` are automatically redacted from logs and reports.
+
+---
+
+*Enjoy fast, reliable, and AI‑enhanced test automation!*
 
 <h1>🔬 ████████</h1>
 <p><strong>AI-powered Test Automation for Oracle Fusion Cloud</strong></p>
