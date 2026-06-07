@@ -249,10 +249,10 @@ Before you start, make sure you have the following installed:
 
 ## 🚀 Setup Instructions (Step by Step)
 
-### Step 1: Download the Project
+### Step 1: Clone the Repository
 ```bash
-git clone https://github.com/pvsairam/testcase.git
-cd testcase
+git clone https://github.com/Danielfavour6002/AI-Powered-Web-Automation-Platform.git
+cd AI-Powered-Web-Automation-Platform
 ```
 
 ### Step 2: Create a Virtual Environment
