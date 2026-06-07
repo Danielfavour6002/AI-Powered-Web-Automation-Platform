@@ -473,6 +473,46 @@ async def run_test(run_id: str, test_id: str, config: Config,
                                         f"redirected to login at {page.url}. "
                                         "Re-generate auth state or check credentials in Settings."
                                     )
+                            # Inject centering CSS for IDCS sign-in page, including iframes
+                            if is_oracle and ("/signin" in page.url.lower() or "idcs" in page.url.lower()):
+                                try:
+                                    await page.evaluate("""
+(() => {
+  const apply = (doc) => {
+    doc.documentElement.style.display = 'flex';
+    doc.documentElement.style.justifyContent = 'center';
+    doc.documentElement.style.alignItems = 'center';
+    doc.documentElement.style.height = '100vh';
+    doc.documentElement.style.margin = '0';
+    if (doc.body) {
+      doc.body.style.display = 'flex';
+      doc.body.style.justifyContent = 'center';
+      doc.body.style.alignItems = 'center';
+      doc.body.style.height = '100vh';
+      doc.body.style.margin = '0';
+    }
+  };
+  // Apply to main document
+  apply(document);
+  // Apply to same-origin iframes
+  document.querySelectorAll('iframe').forEach(frame => {
+    try { apply(frame.contentDocument); } catch (e) {}
+  });
+  // Retry a few times in case later scripts override
+  let attempts = 3;
+  const retry = () => {
+    if (attempts-- <= 0) return;
+    apply(document);
+    document.querySelectorAll('iframe').forEach(frame => {
+      try { apply(frame.contentDocument); } catch (e) {}
+    });
+    setTimeout(retry, 1000);
+  };
+  setTimeout(retry, 1000);
+})();
+""")
+                                except Exception:
+                                    pass
                             
                         elif step.action == ActionType.CLICK:
                             loc = _get_locator(resolved_selector)

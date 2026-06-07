@@ -44,9 +44,13 @@ async def _async_main(output_path: str, target_url: str = None, env_id: str = No
 
     width, height = get_screen_resolution()
 
+    user_data_dir = Path("engine/.recorder_user_data")
+    user_data_dir.mkdir(parents=True, exist_ok=True)
+
     # ── Launch async Playwright ────────────────────────────────────────────────
     async with async_playwright() as p:
-        browser = await p.chromium.launch(
+        context = await p.chromium.launch_persistent_context(
+            str(user_data_dir),
             headless=False,
             args=[
                 "--disable-blink-features=AutomationControlled",
@@ -54,11 +58,9 @@ async def _async_main(output_path: str, target_url: str = None, env_id: str = No
                 "--no-sandbox",
                 "--start-maximized",
             ],
-        )
-        context = await browser.new_context(
             viewport={"width": width, "height": height}
         )
-        page = await context.new_page()
+        page = context.pages[0] if context.pages else await context.new_page()
 
         logger.info(f"Generating auth state for {fusion_user} on {login_url}...")
         login_page = LoginPage(page, is_oracle=True)
@@ -83,7 +85,7 @@ async def _async_main(output_path: str, target_url: str = None, env_id: str = No
                 logger.error(f"Failed to save debug screenshot: {e2}")
             sys.exit(1)
         finally:
-            await browser.close()
+            await context.close()
 
 
 def main(output_path: str, target_url: str = None, env_id: str = None) -> None:

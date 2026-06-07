@@ -17,6 +17,28 @@ from core.security import sanitize_step
 from fusion.login_page import LoginPage
 from fusion.wait import wait_for_any_idle
 
+def _sanitize_selector(selector: str) -> str:
+    """Escape problematic characters in CSS selectors.
+    Handles IDs that contain ':' by converting to an attribute selector.
+    Only modifies selectors that start with '#'.
+    """
+    # If selector is an ID selector (starts with '#')
+    if selector.startswith('#'):
+        clean = selector[1:]  # remove leading '#'
+        if ':' in clean:
+            # Use attribute selector to match the exact id value
+            return f"[id='{clean}']"
+        # No colon, safe to use as is (remove leading '#')
+        return f"#{clean}"
+    # Non-ID selectors are returned unchanged
+    return selector
+    """Escape problematic characters in CSS selectors.
+    Currently handles ':' by converting to an attribute selector.
+    """
+    if ':' in selector:
+        return f"[id='{selector}']"
+    return selector
+
 logger = get_logger()
 
 # In-memory streaming queues and resume events for pause/resume control
@@ -344,9 +366,28 @@ async def run_autonomous_agent(run_id: str, test_id: str, api_key: str, output_r
         await playwright_context.add_init_script(overlay_script)
         page = await playwright_context.new_page()
         
+        # Determine final navigation URL: prioritize seeded_reports_url if set
+        seeded_url = config.seeded_reports_url.strip() if hasattr(config, "seeded_reports_url") else ""
+        if seeded_url:
+            logger.info(f"Using seeded reports URL from config: {seeded_url}")
+            target_url = seeded_url
+        # Log navigation attempt
         await push_agent_log(run_id, {"type": "log", "message": f"Browser opened. Navigating to base URL: {target_url}"})
-        await page.goto(target_url, wait_until="domcontentloaded")
-        
+        try:
+            await page.goto(target_url, wait_until="domcontentloaded", timeout=60000)  # 60s timeout
+        except Exception as nav_err:
+            logger.error(f"Navigation to {target_url} failed: {nav_err}")
+            await push_agent_log(run_id, {"type": "error", "message": f"Failed to navigate to {target_url}: {nav_err}"})
+            # Attempt fallback to test.url if different
+            if target_url != test.url:
+                try:
+                    await page.goto(test.url, wait_until="domcontentloaded", timeout=60000)
+                    await push_agent_log(run_id, {"type": "log", "message": f"Fallback navigation to original test URL succeeded: {test.url}"})
+                except Exception as fallback_err:
+                    logger.error(f"Fallback navigation also failed: {fallback_err}")
+                    await push_agent_log(run_id, {"type": "error", "message": f"Fallback navigation failed: {fallback_err}"})
+                    raise
+                
         # Oracle Login Helper
         if client_profile and override_password:
             logger.info("Performing auto-login inside autonomous driver")
@@ -472,6 +513,7 @@ async def run_autonomous_agent(run_id: str, test_id: str, api_key: str, output_r
                     thought = action_json.get("thought", "Driving next interaction")
                     ai_action = action_json.get("action", "click")
                     ai_selector = action_json.get("selector", "")
+                    safe_selector = _sanitize_selector(ai_selector)
                     ai_value = action_json.get("value", step.value)
                     
                     await push_agent_log(run_id, {
@@ -495,20 +537,20 @@ async def run_autonomous_agent(run_id: str, test_id: str, api_key: str, output_r
                         interaction_success = True
                         
                     elif ai_action == "click":
-                        loc = page.locator(ai_selector).first
+                        loc = page.locator(safe_selector).first
                         await loc.wait_for(state="attached", timeout=10000)
                         await loc.click(timeout=5000)
                         await wait_for_any_idle(page, config.is_oracle_fusion)
                         interaction_success = True
                         
                     elif ai_action == "fill":
-                        loc = page.locator(ai_selector).first
+                        loc = page.locator(safe_selector).first
                         await loc.wait_for(state="attached", timeout=10000)
                         await loc.fill(ai_value, timeout=5000)
                         interaction_success = True
                         
                     elif ai_action == "select":
-                        await page.locator(ai_selector).first.select_option(ai_value)
+                        await page.locator(safe_selector).first.select_option(ai_value)
                         interaction_success = True
                         
                 except Exception as ex:

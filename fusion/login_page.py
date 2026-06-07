@@ -11,6 +11,36 @@ class LoginPage(BasePage):
     
     async def assert_login_form_visible(self) -> None:
         """Check that the username field is visible (password may be hidden on IDCS two-step)."""
+        # Inject centering CSS before waiting for form to avoid unaligned layout showing
+        try:
+            await self.page.evaluate("""
+(() => {
+  const style = document.createElement('style');
+  style.id = 'qap-center-signin-style-loginpage';
+  style.innerHTML = `
+    .oj-idaas-signin-card, 
+    .idcs-signin-card, 
+    #loginContainer,
+    .login-container,
+    .signin-container {
+      position: fixed !important;
+      top: 50% !important;
+      left: 50% !important;
+      transform: translate(-50%, -50%) !important;
+      z-index: 100000 !important;
+      margin: 0 !important;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.1) !important;
+    }
+  `;
+  const parent = document.head || document.documentElement;
+  if (parent && !document.getElementById('qap-center-signin-style-loginpage')) {
+    parent.appendChild(style);
+  }
+})();
+""")
+        except Exception:
+            pass
+
         loc_user = await self.resolve_locator(LOGIN["username"])
         await loc_user.wait_for(state="visible", timeout=15000)
         logger.info("Login form (username field) is visible")

@@ -67,7 +67,7 @@ If you are a QA tester tasked with testing **this QA tool itself**, run through 
 
 ### TC-03: Quick Record Accuracy
 - **Action:** Start Quick Record, navigate to a site, click a button, and stop recording.
-- **Expected Result:** The recorded output generates valid instruction strings (e.g., `"Click on 'Button Name'"`) that perfectly match the actions taken.
+- **Expected Result:** The recorded output generates valid instruction strings (e.g., "Click on 'Button Name'") that perfectly match the actions taken.
 
 ### TC-04: Trace Viewer Integration
 - **Action:** Open a completed run, go to the "Trace" tab, and click "Open in Trace Viewer".

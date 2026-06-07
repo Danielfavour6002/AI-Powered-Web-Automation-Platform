@@ -22,8 +22,11 @@ class Recorder:
         """Start the codegen process."""
         async with self._lock:
             if self.is_recording:
-                raise RecordingError("Recording already in progress")
-                
+                # Attempt to stop any existing recording before starting a new one
+                try:
+                    await self.stop_recording()
+                except Exception as e:
+                    logger.warning(f"Failed to stop previous recorder cleanly: {e}")
             self.output_file = output_file
             
             logger.info(f"Recording started for {url}")
@@ -33,10 +36,22 @@ class Recorder:
                 import subprocess
                 from core.config import load_config
                 from core.display import get_screen_resolution
+                import signal
                 
                 config = load_config(Path(".env"))
                 width, height = get_screen_resolution()
-                cmd = [sys.executable, "-m", "playwright", "codegen", "--target", "python", url, "--output", str(output_file), "--viewport-size", f"{width},{height}"]
+                
+                user_data_dir = Path("engine/.recorder_user_data")
+                user_data_dir.mkdir(parents=True, exist_ok=True)
+                
+                cmd = [
+                    sys.executable, "-m", "playwright", "codegen",
+                    "--target", "python",
+                    url,
+                    "--output", str(output_file),
+                    "--viewport-size", f"{width},{height}",
+                    f"--user-data-dir={user_data_dir}"
+                ]
                 
                 if config.is_oracle_fusion:
                     state_file = Path("engine/.auth_state.json")
@@ -51,17 +66,42 @@ class Recorder:
                 # Match the test runner's dimensions and the user's laptop screen perfectly
                 import os
                 ext_path = Path(__file__).resolve().parent / "recorder_extension"
+                ext_path_str = str(ext_path)
                 existing_args = os.environ.get("PLAYWRIGHT_CHROMIUM_LAUNCH_ARGS", "")
-                ext_args = f"--disable-extensions-except={ext_path.as_posix()} --load-extension={ext_path.as_posix()}"
+                ext_args = f"--disable-extensions-except={ext_path_str} --load-extension={ext_path_str}"
                 os.environ["PLAYWRIGHT_CHROMIUM_LAUNCH_ARGS"] = f"{existing_args} {ext_args}".strip()
                 
                 self.process = subprocess.Popen(
                     cmd,
                     stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
                     creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == 'win32' else 0
                 )
+                # Start background monitor for error patterns
+                async def _monitor():
+                    try:
+                        # Combine stdout and stderr lines
+                        while True:
+                            line = await asyncio.get_event_loop().run_in_executor(None, self.process.stdout.readline)
+                            if not line:
+                                break
+                            decoded = line.decode(errors='ignore')
+                            # Simple pattern detection for Playwright locator errors
+                            if "Locator.wait_for" in decoded or "Locator.fill" in decoded:
+                                logger.error(f"Recorder error detected, terminating: {decoded.strip()}")
+                                try:
+                                    if sys.platform == "win32":
+                                        self.process.send_signal(signal.CTRL_BREAK_EVENT)
+                                    else:
+                                        self.process.terminate()
+                                except Exception:
+                                    pass
+                                break
+                    except Exception as e:
+                        logger.debug(f"Recorder monitor exception: {e}")
+                # Fire and forget monitor task
+                asyncio.create_task(_monitor())
             except Exception as e:
                 import traceback
                 logger.error(f"Failed to start codegen: {traceback.format_exc()}")
@@ -76,10 +116,10 @@ class Recorder:
                 raise RecordingError("No recording in progress")
                 
             import sys
+            import signal
             
             try:
-                if sys.platform == 'win32':
-                    import signal
+                if sys.platform == "win32":
                     self.process.send_signal(signal.CTRL_BREAK_EVENT)
                 else:
                     self.process.terminate()

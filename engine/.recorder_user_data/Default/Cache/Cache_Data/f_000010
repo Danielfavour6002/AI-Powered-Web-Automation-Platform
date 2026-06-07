@@ -1,0 +1,816 @@
+/**
+ *  __  __ ___ _  ____
+ * |  \| |/ __\ \| |  `
+ * |   \ | / |   \ | \ \
+ * | |\  | \_| |\  | / /
+ * |_| \_|\__/_| \_|__/
+ * Common banner-driven popup
+ */
+typeof ncndCommonPopup == "function" || (ncndCommonPopup = function (externalOptions, msisdn = "") {
+
+    const defaultOptions = {
+        // behaviour
+        popupType: "buttons",   // buttons | otp
+        showOrder: "load",      // load | click | timer | now
+        closeOrder: "click",    // click | timer
+        isSplash: false,        // show popup as splash (adds splashClass if true)
+        isBottom: false,        // show popup as bottom animated (adds bottomClass if true)
+        multiLink: "",          // radio | ignore | <empty>
+        selectStarter: "each",  // each | first (get only first allowed starter from list)
+        service: null,
+        isServiceRequired: false,                   // exit if no service name found
+        isRenderRequired: false,                    // exit if can't render data from service list
+        oneClickConfirmation: false,                // use only one button step, for otp - autosubscribe if msisdn found
+        clickPrefix: "popup",                       // prefix to add before clickId on redirect
+        // timer
+        timeInterval: 0,                            // time to wait before next popup show (sec)
+        timeStorageKeyPrefix: "cache-popup-time-",  // prefix to cache time interval in storage
+        ignoreTimeInterval: false,                  // ignore time interval
+        closeTime: 10,
+        showTimer: true,
+        // content
+        starterElement: null,
+        starterSelector: ".alias-service-splash-starter", // who triggers the show
+        containerSelector: ".mainmain-popup", // where to get the popup html
+        containerShowStyle: "block",
+        splashClass: "splash-popup",
+        bottomClass: "bottom-popup",
+        // timerShowClass: "b-modal_splash",
+        popupSelectors: {
+            popupWrapper: ".b-modal_wrapper",
+            subscribeButton: ".popup-subscribe-button",
+            confirmButton: ".popup-confirm-button",
+            countdown: ".b-modal_countdown",
+            timer: ".popup-timer",
+            tnc: ".tc_wrapper",
+            tncOpen: ".open-tnc",
+            tncClose: ".close-tnc",
+            multiLinkContainer: ".radio-buttons",
+            multiLinkSample: ".radio-button.hidden",
+            hideButton: ".b-modal_close",
+            // render points
+            logoEl: ".popup-logo",
+            popupTopText: ".b-modal_description",
+            popupTitle: ".b-modal_title",
+            popupInfo: ".b-modal_promo",
+            popupFooterText: ".b-modal_footer",
+            tncContent: ".tc_content",
+            popupError: "",
+            // otp
+            divWiFi: "",
+            otpStep1: "",
+            otpStep2: "",
+            inputMsisdn: "",
+            inputOpxUserId: "",
+            inputMsHidden: "",
+            inputPin: "",
+            cbCheckbox: "",
+            loader: "",
+        },
+        helperSelectors: {
+            starterPlaceholderElement: ".common-popup-placeholder-helper", // placeholder element near the starter
+        },
+        popupStyle: {
+            disabledButtonClass: "disabled_btn",
+        },
+        multiLinkSelectors: {
+            input: "input[type=radio]",
+            name: "h3",
+            sampleClass: "hidden",
+        },
+        // api calls
+        api: {
+            // otp api call
+            sendOtp: {
+                method: "",
+                uri: "",
+                params: {},
+            },
+            // confirmation form send
+            confirm: {
+                method: "",
+                uri: "",
+                params: {},
+            },
+        },
+        utm_source: "nocredit",
+        utm_campaign: "",
+        // otp msisdn correction
+        msisdnRegExp: "",
+        msisdnRegExpGroup: 1,  // index of regexp group that contains main number
+        msisdnPrefix: "",
+        // data attributes
+        starterAttributes: {
+            service: "data-service",
+            closeTime: "data-timer",
+            source: "data-source",
+            campaign: "data-campaign",
+            track: "data-track",
+        },
+        // render data
+        imagePrefix: "",
+        serviceList: {},
+        terms: {},
+    };
+
+    const required = {
+        elements: {
+            buttons: ["subscribeButton"],
+            otp: ["subscribeButton", "confirmButton", "inputPin"],
+        },
+    };
+
+    const placeholders = {
+        '%msisdn%': '',
+        '%source%': 'nocredit',
+        '%campaign%': '',
+    };
+
+    const serviceFields = [
+        "bg",
+        "logo", "toptext", "title", "description",
+        "footer_text",
+        "button",
+        "confirmButton",
+        "timing",
+        "oneClickConfirmation"
+    ];
+
+    const elements = {
+        starter: null,
+        container: null,
+
+        popupWrapper: null,
+        logoEl: null,
+        popupTopText: null,
+        popupTitle: null,
+        popupInfo: null,
+        popupFooterText: null,
+        popupError: null,
+        subscribeButton: null,
+        confirmButton: null,
+        countdown: null,
+        timer: null,
+        tnc: null,
+        tncContent: null,
+        tncOpen: null,
+        tncClose: null,
+        multiLinkContainer: null,
+        multiLinkSample: null,
+        hideButton: null,
+
+        // otp
+        divWiFi: null,
+        divOtpPage1: null,
+        divOtpPage2: null,
+        inputMsisdn: null,
+        inputOpxUserId: null,
+        inputMsHidden: null,
+        inputPin: null,
+        cbCheckbox: null,
+        loader: null,
+    };
+    var activeServiceData;
+    var popupTimer;
+    var popupShown = false;
+    var subscriptionSent = false;
+    var confirmationSent = false;
+    var otpPrefill = false;
+    var multiLinkCache = {};
+
+    const options = $.extend(true, {}, defaultOptions, externalOptions);
+
+    function init() {
+        // init common
+        elements.starter = selectStarter();
+        if (elements.starter === null) {
+            return;
+        }
+
+        elements.container = options.containerSelector ? $(options.containerSelector) : null;
+        Array.prototype.map.call(Object.entries(options.popupSelectors), ([name, selector]) => {
+            $element = selector ? $(selector, elements.container) : null;
+            elements[name] = $element && $element.length ? $element : null;
+        });
+        Array.prototype.map.call(required.elements[options.popupType], (name) => {
+            if (!elements[name]) {
+                throw new DOMException("Element '" + name + "' is required for '" + options.popupType + "' popup.");
+            }
+        });
+
+        elements.tncOpen && elements.tncOpen.click(showTnc);
+        elements.tncClose && elements.tncClose.click(closeTnc);
+
+        // init by type
+        switch (options.popupType) {
+            case "buttons":
+                elements.subscribeButton && elements.subscribeButton.click(subscribeButtonClick);
+                elements.confirmButton && elements.confirmButton.click(confirmButtonClick);
+                break;
+
+            case "otp":
+                processMsisdn();
+                elements.cbCheckbox && elements.cbCheckbox.click(onCheckboxClick);
+                elements.subscribeButton && elements.subscribeButton.click(otpSubscribeButtonClick);
+                elements.confirmButton && elements.confirmButton.click(otpConfirmButtonClick);
+                if (options.oneClickConfirmation && options.showOrder != "click") {
+                    elements.inputMsisdn && elements.inputMsisdn.keyup(checkMsisdnAutosubmit);
+                }
+                break;
+        }
+
+        // popup show setting
+        switch (options.showOrder) {
+            case "load":
+                $(document).ready(() => {
+                    showPopup()
+                });
+                break;
+            case "click":
+                elements.starter.click(showPopup);
+                break;
+            case "now":
+                showPopup();
+                break;
+        }
+    }
+
+    function selectStarter() {
+        if (options.starterElement) {
+            return $(options.starterElement);
+        }
+        var starters = $(options.starterSelector);
+        if (options.selectStarter == "each") {
+            return starters;
+        }
+        var service = '', starter = null;
+        starters.each((key,elem) => {
+            service = elem.getAttribute(options.starterAttributes.service);
+            if (service && checkTimeInterval(service, false)) {
+                starter = $(elem);
+                return false;
+            }
+            return true;
+        })
+        return starter;
+    }
+
+    function showPopup(e) {
+        e && e.preventDefault();
+        var starter = (e && e.currentTarget) ? $(e.currentTarget) : null;
+        if (starter) {
+            elements.starter = starter;
+        }
+
+        if (!processAttributes()) {
+            return;
+        }
+        if (!checkTimeInterval()) {
+            return;
+        }
+
+        popupShown = true;
+        renderPopup();
+
+        initCloseHandler();
+
+        registerAction(e ?'bn' : 'view');
+        switch (options.popupType) {
+            case "buttons":
+                showSplashPopup();
+                break;
+            case "otp":
+                showOtpPopup();
+                break;
+        }
+    }
+
+    function processAttributes() {
+        if (popupShown) {
+            return false;
+        }
+        if (options.starterAttributes.service) {
+            var service = elements.starter.attr(options.starterAttributes.service);
+            if (service) {
+                options.service = service;
+            }
+        }
+        if (options.isServiceRequired && !options.service) {
+            return false;
+        }
+
+        if (options.starterAttributes.closeTime) {
+            var closeTime = elements.starter.attr(options.starterAttributes.closeTime);
+            if (closeTime) {
+                options.closeTime = closeTime;
+            }
+        }
+
+        if (options.starterAttributes.source) {
+            var source = elements.starter.attr(options.starterAttributes.source);
+            if (source) {
+                options.utm_source = source;
+            }
+        }
+        if (options.starterAttributes.campaign) {
+            var campaign = elements.starter.attr(options.starterAttributes.campaign);
+            if (campaign) {
+                options.utm_campaign = campaign;
+            }
+        }
+        placeholders['%source%'] = options.utm_source;
+        placeholders['%campaign%'] = options.utm_campaign;
+        updateHolders();
+
+        if (!(options.service in options.serviceList)) {
+            activeServiceData = null;
+            return !options.isRenderRequired;
+        }
+
+        activeServiceData = options.serviceList[options.service];
+        if ('timing' in activeServiceData && activeServiceData['timing']) {
+            options.timeInterval = activeServiceData['timing'];
+        }
+        switch (options.popupType) {
+            case "buttons":
+                options.oneClickConfirmation = (activeServiceData['confirmButton'] === false);
+                break;
+            case "otp":
+                if (typeof activeServiceData['oneClickConfirmation'] != "undefined") {
+                    options.oneClickConfirmation = activeServiceData['oneClickConfirmation'];
+                }
+                break;
+        }
+        if (options.multiLink != "ignore") {
+            options.multiLink = activeServiceData.multiLink;
+            if (typeof multiLinkCache[options.service] == "undefined" && activeServiceData.multiLinkOptions) {
+                multiLinkCache[options.service] = activeServiceData.multiLinkDefault ?
+                    activeServiceData.multiLinkDefault :
+                    Object.entries(activeServiceData.multiLinkOptions)[0][0];
+            }
+        }
+        if ('api' in activeServiceData) {
+            options.api = $.extend({}, options.api, activeServiceData.api);
+        }
+        return true;
+    }
+
+    function checkTimeInterval(service = '', registerTime = true) {
+        if (options.timeInterval && typeof Storage !== "undefined") {
+            var key = options.timeStorageKeyPrefix + (service === '' ? options.service : service);
+            var tm = parseInt(localStorage.getItem(key), 10);
+            var curr = new Date().getTime();
+            var maxTime = options.timeInterval * 1000 + tm;
+
+            if (!options.ignoreTimeInterval && !isNaN(tm) && curr > tm && curr < maxTime) {
+                return false;
+            }
+
+            if (registerTime) {
+                localStorage.setItem(key, "" + curr);
+            }
+        }
+        return true;
+    }
+
+    function initCloseHandler() {
+        if (options.closeOrder == "timer" && options.closeTime) {
+            var sec = options.closeTime;
+            popupTimer = setInterval(() => {
+                sec--;
+                if (sec <= 0) {
+                    elements.timer && elements.timer.html('Now');
+                    closePopup();
+                } else if (sec > 0) {
+                    elements.timer && elements.timer.html(sec + '');
+                }
+            }, 1000);
+        }
+
+        elements.hideButton && elements.hideButton.click(closePopup);
+    }
+
+    function showSplashPopup() {
+        elements.subscribeButton && elements.subscribeButton.show();
+        elements.confirmButton && elements.confirmButton.hide();
+        closeTnc();
+        showContainer();
+    }
+
+    function showOtpPopup() {
+        hideLoader();
+        elements.divOtpPage1.show();
+        elements.divOtpPage2.hide();
+        elements.divWiFi.hide();
+        closeTnc();
+        showContainer();
+        if (otpPrefill && options.oneClickConfirmation && options.showOrder == "click") {
+            otpSubscribeButtonClick();
+        }
+    }
+
+    function renderPopup() {
+        if (options.isSplash) {
+            elements.container.addClass(options.splashClass);
+        } else {
+            elements.container.removeClass(options.splashClass);
+        }
+        if (options.isBottom) {
+            elements.container.addClass(options.bottomClass);
+        } else {
+            elements.container.removeClass(options.bottomClass);
+        }
+        elements.countdown && elements.countdown.toggle(options.closeOrder == "timer" && options.showTimer);
+        elements.multiLinkContainer && elements.multiLinkContainer.toggle(options.multiLink == "radio");
+
+        options.service && elements.container.addClass(options.service);
+
+        if (!activeServiceData) {
+            return false;
+        }
+        if (!elements.popupWrapper) {
+            elements.popupWrapper = elements.container;
+        }
+        activeServiceData.bg && elements.popupWrapper.css({backgroundImage: "url('" + options.imagePrefix + activeServiceData.bg + "')"});
+        if (elements.logoEl) {
+            elements.logoEl.attr("src", "");
+            if (activeServiceData['logo']) {
+                elements.logoEl.attr("src", options.imagePrefix + activeServiceData.logo);
+                elements.logoEl.show();
+            } else {
+                elements.logoEl.hide();
+            }
+        }
+        elements.popupTopText && elements.popupTopText.html(holders(activeServiceData.toptext));
+        elements.popupTitle && elements.popupTitle.html(holders(activeServiceData.title));
+        elements.popupInfo && elements.popupInfo.html(holders(activeServiceData.description));
+        elements.popupFooterText && elements.popupFooterText.html(holders(activeServiceData.footer_text));
+        elements.subscribeButton && elements.subscribeButton.html(holders(activeServiceData.button));
+        elements.popupError && elements.popupError.html(holders(activeServiceData.error));
+        elements.tncOpen && activeServiceData.tc_uri && elements.tncOpen.attr("href", holders(activeServiceData.tc_uri));
+        (options.multiLink == "radio")  && renderMultiLink();
+        return false;
+    }
+
+    function renderMultiLink() {
+        if (!elements.multiLinkContainer || !elements.multiLinkSample) {
+            return;
+        }
+        elements.multiLinkSample.hide();
+        elements.multiLinkContainer.children().not(options.popupSelectors.multiLinkSample).remove();
+        Array.prototype.map.call(Object.entries(activeServiceData.multiLinkOptions), ([value, name]) => {
+            var opt = elements.multiLinkSample.clone();
+            opt.removeClass(options.multiLinkSelectors.sampleClass);
+            $(options.multiLinkSelectors.input, opt).attr("value", value);
+            $(options.multiLinkSelectors.name, opt).html(holders(name));
+            if (multiLinkCache[options.service] && multiLinkCache[options.service] == value) {
+                $(options.multiLinkSelectors.input, opt).prop("checked", true);
+            } else {
+                $(options.multiLinkSelectors.input, opt).removeAttr("checked");
+            }
+            opt.removeAttr("style");
+            elements.multiLinkContainer.append(opt);
+        });
+    }
+
+    function updateHolders() {
+        $(options.helperSelectors.starterPlaceholderElement, elements.starter.parent()).each(function(){
+            elem = $(this);
+            holderName = elem.attr("data-placeholder");
+            if (holderName) {
+                holderName = '%' + holderName + '%';
+                switch(elem.attr("data-placeholder-type")) {
+                    case "href":
+                        placeholders[holderName] = elem.attr("href");
+                        break;
+                    case "body":
+                        placeholders[holderName] = elem.html();
+                        break;
+                }
+            }
+        });
+    }
+
+    function holders(value) {
+        if (!value || typeof value !== "string") {
+            return value;
+        }
+        return value.replace(/%\w+%/g, found => (typeof placeholders[found] !== "undefined") ? placeholders[found] : found);
+    }
+
+    function stopPopupTimer() {
+        if (popupTimer) {
+            clearInterval(popupTimer);
+        }
+        elements.countdown && elements.countdown.hide();
+    }
+
+    function subscribeButtonClick(e) {
+        e && e.preventDefault();
+        if (!popupShown) {
+            return;
+        }
+        stopPopupTimer();
+        if (options.oneClickConfirmation) {
+            return confirmButtonClick();
+        } else {
+            registerAction('sub');
+        }
+        elements.subscribeButton.hide();
+        elements.confirmButton.show();
+        return false;
+    }
+
+    function confirmButtonClick(e) {
+        e && e.preventDefault();
+        if (!popupShown) {
+            return;
+        }
+        if (confirmationSent) {
+            return false;
+        }
+        confirmationSent = true;
+        updateConfirmButton();
+        stopPopupTimer();
+        var target = getStarterUrl();
+        if (target && target[0] == '/' && target.substr(1, 6) == 'click/') {
+            var bnPos = target.indexOf('/bn/');
+            // temporary disabled, breaks service stats
+            // if (bnPos < 30) {
+            //     target = target.substr(0, bnPos) + '/pop/' + target.substr(bnPos + 4);
+            // }
+        } else {
+            registerAction('pop');
+        }
+        if (target && target[0] == '/' && options.clickPrefix) {
+            var u = new URL(window.location.origin + target);
+            var params = u.searchParams;
+            var clickid = options.clickPrefix + params.get('click');
+            params.set('click', clickid);
+            u.search = params.toString();
+            target = u.toString();
+        }
+        if (target) {
+            window.location.href = target;
+        } else {
+            registerAction('err');
+            confirmationSent = false;
+            updateConfirmButton();
+        }
+        return false;
+    }
+
+    function getStarterUrl() {
+        var target = "";
+        if (options.multiLink == "radio") {
+            var opt = $(options.multiLinkSelectors.input + ":checked", elements.multiLinkContainer);
+            if (opt.length && opt.attr("value")) {
+                var link = $("link[name="+opt.attr("value")+"]", elements.starter);
+                link.length && (target = link.attr("href"));
+            }
+        }
+        if (!target) {
+            target = getDcrtUrl(elements.starter[0]);
+        }
+        if (!target) {
+            target = elements.starter.attr("href");
+        }
+        return target;
+    }
+
+    function processMsisdn() {
+        if (msisdn !== "") {
+            elements.inputMsisdn.val(msisdn);
+            placeholders['%msisdn%'] = msisdn;
+            otpPrefill = true
+        } else {
+            //Wifi mode:
+            elements.inputMsisdn.val("");
+            elements.inputMsisdn.removeAttr("disabled");
+            elements.inputMsisdn.focus();
+        }
+        elements.divWiFi.hide();
+        elements.divOtpPage2.hide();
+    }
+
+    function onCheckboxClick() {
+        if (!popupShown) {
+            return;
+        }
+        updateConfirmButton();
+    }
+
+    function updateConfirmButton() {
+        isChecked = elements.cbCheckbox ? elements.cbCheckbox.is(":checked") : true;
+        if (isChecked && !confirmationSent) {
+            elements.confirmButton.removeClass(options.popupStyle.disabledButtonClass);
+        } else {
+            elements.confirmButton.addClass(options.popupStyle.disabledButtonClass);
+        }
+    }
+
+    function checkMsisdnAutosubmit(e) {
+        if (options.msisdnPrefix && options.msisdnRegExp &&
+            options.oneClickConfirmation && options.showOrder != "click") {
+            msisdn = elements.inputMsisdn.val();
+            if (msisdn.match(options.msisdnRegExp)) {
+                elements.inputMsisdn.attr("disabled", "disabled");
+                otpSubscribeButtonClick(e, true);
+            }
+        }
+    }
+
+    function otpSubscribeButtonClick(e, isAutoSubmitted) {
+        e && e.preventDefault();
+        if (!popupShown) {
+            return;
+        }
+        stopPopupTimer();
+
+        if (options.oneClickConfirmation && options.showOrder != "click" && !isAutoSubmitted) {
+            elements.divOtpPage1.hide();
+            elements.divOtpPage2.show();
+            return;
+        }
+
+        if (subscriptionSent) {
+            return false;
+        }
+        subscriptionSent = true;
+        if (!otpPrefill) {
+            msisdn = elements.inputMsisdn.val();
+        }
+
+        if (options.msisdnPrefix && options.msisdnRegExp) {
+            var match = msisdn.match(options.msisdnRegExp);
+            if (match && match[options.msisdnRegExpGroup]) {
+                msisdn = options.msisdnPrefix + match[options.msisdnRegExpGroup];
+            }
+        }
+        placeholders['%msisdn%'] = msisdn;
+
+        registerAction('sub');
+        doApiCall();
+    }
+
+    function otpConfirmButtonClick(e) {
+        if (!popupShown) {
+            return;
+        }
+        if (confirmationSent) {
+            return false;
+        }
+        confirmationSent = true;
+        updateConfirmButton();
+        stopPopupTimer();
+        registerAction('pop');
+        return true;
+    }
+
+    function doApiCall() {
+        var uri = options.api.sendOtp.uri;
+        var params = {
+            method: options.api.sendOtp.method,
+        }
+        var apiData = [];
+        Array.prototype.map.call(Object.entries(options.api.sendOtp.params), ([name, value]) => {
+            apiData.push(name + "=" + encodeURIComponent(holders(value)));
+        });
+        apiData = apiData.join('&');
+        switch (options.api.sendOtp.method) {
+            case "GET":
+            case "HEAD":
+                uri += "?" + apiData;
+                break;
+            default:
+                params.body = apiData;
+                break;
+        }
+        showLoader();
+        fetch(uri, params).then(r => r.json())
+            .then(onApiSuccess)
+            .catch(onApiFail);
+    }
+
+    function onApiSuccess(data) {
+        hideLoader();
+        if (data['StatusCode'] !== '0') {
+            onApiFail(data);
+            return;
+        }
+
+        elements.inputOpxUserId.val(data['OPXUserID']);
+        elements.inputMsHidden.val(msisdn);
+        if (otpPrefill) {
+            elements.inputPin.val(data['PinCode']);
+        }
+
+        var form = $("form", elements.divOtpPage2);
+        form.length && options.api.confirm.method && form.attr("method", options.api.confirm.method);
+        form.length && options.api.confirm.uri && form.attr("action", holders(options.api.confirm.uri));
+        Array.prototype.map.call(Object.entries(options.api.confirm.params), ([name, value]) => {
+            var param = $("[name=" + name + "]", elements.divOtpPage2);
+            param.length && param.val(holders(value));
+        });
+
+        elements.divOtpPage1.hide();
+        elements.divOtpPage2.show();
+        subscriptionSent = false;
+    }
+
+    function onApiFail(data) {
+        hideLoader();
+        registerAction('err');
+        elements.divWiFi.show();
+        elements.divOtpPage1.hide();
+        elements.divOtpPage2.hide();
+        subscriptionSent = false;
+    }
+
+    function registerAction(action, success = function(){}, fail = function(){}) {
+        if (!elements.starter) {
+            return fail();
+        }
+        var uri = elements.starter.attr(options.starterAttributes.track);
+        if (uri) {
+            if (action != 'view') {
+                uri += '/'+encodeURI(action);
+            }
+            fetch(uri)
+                .then(success)
+                .catch(fail);
+        } else {
+            return fail();
+        }
+    }
+
+    function closeTnc(e) {
+        e && e.preventDefault();
+        elements.tnc && elements.tnc.hide();
+        return false;
+    }
+
+    function showTnc(e) {
+        if (!popupShown) {
+            return;
+        }
+        if (!elements.tnc) {
+            return;
+        }
+        e && e.preventDefault();
+        stopPopupTimer();
+
+        if (options.service in options.terms) {
+            elements.tncContent && elements.tncContent.html(options.terms[options.service]);
+            elements.tnc.show();
+            return false;
+        }
+        if (!activeServiceData) {
+            elements.tnc.show();
+            return false;
+        }
+        elements.tncContent.html("");
+        fetch('/lp/' + activeServiceData['tc_landing'])
+            .then((data) => data.text())
+            .then((data) => {
+                options.terms[options.service] = data;
+                elements.tncContent.html(data);
+                elements.tnc.show();
+            });
+        return false;
+    }
+
+    function showContainer(e) {
+        e && e.preventDefault();
+        elements.container.css("display", options.containerShowStyle);
+    }
+
+    function closePopup(e) {
+        e && e.preventDefault();
+        if (!popupShown) {
+            return;
+        }
+        elements.container.hide();
+        options.service && elements.container.removeClass(options.service);
+        if (options.multiLink == "radio") {
+            const opt = $(options.multiLinkSelectors.input + ":checked", elements.multiLinkContainer);
+            if (opt.length && opt.attr("value")) {
+                multiLinkCache[options.service] = opt.attr("value");
+            }
+        }
+        hideLoader();
+        stopPopupTimer();
+        popupShown = false;
+        return false;
+    }
+
+    function showLoader() {
+        elements.loader && elements.loader.show();
+    }
+
+    function hideLoader() {
+        elements.loader && elements.loader.hide();
+    }
+
+    init();
+});
